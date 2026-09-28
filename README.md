@@ -82,3 +82,34 @@ dotnet run --project .\src\HikvisionAbrirCatraca\HikvisionAbrirCatraca.csproj
 ## Observação sobre direção
 
 Versões atuais do HikCentral exigem `controlDirection`: 0 = entrada e 1 = saída. Por padrão os quatro grupos usam 0, pois cada Access Level já aponta para catracas físicas separadas. Se algum torniquete exigir direção 1, altere apenas esse grupo em **Configurações**; não é necessário recompilar.
+
+
+## Administração de catracas
+
+A versão atual possui uma área **Administração** protegida por senha.
+
+No primeiro acesso, o sistema solicita a criação da senha administrativa. A senha não é armazenada em texto puro: é persistido somente um hash PBKDF2 com salt.
+
+A tela administrativa permite:
+
+- adicionar catraca manualmente;
+- editar nome, Door Index Code, IP/referência, grupo, direção e status ativo/inativo;
+- excluir catraca;
+- testar a abertura de uma única catraca;
+- sincronizar/importar automaticamente as catracas dos quatro Access Levels do HikCentral;
+- alterar a senha administrativa.
+
+### Regra de operação
+
+Quando um grupo ainda não possui cadastro local, o botão principal continua descobrindo as catracas pelo Access Level do HikCentral, como antes.
+
+Depois que houver catracas cadastradas/importadas para um grupo, o aplicativo passa a usar **somente as catracas locais marcadas como Ativas**. Isso permite retirar temporariamente uma catraca da operação sem alterar o HikCentral.
+
+A sincronização usa o `Door Index Code` como chave para evitar duplicidade.
+
+### Grupos mantidos
+
+- ENTRADA ACQUAVALE
+- SAIDA ACQUAVALE (também reconhece o nome legado SAIDA AQCUAVALE)
+- CATRACAS SABIA
+- LOJA ACQUAVALE
