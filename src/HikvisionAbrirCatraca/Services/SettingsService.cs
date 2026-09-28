@@ -39,7 +39,10 @@ public static class SettingsService
                 AppSecret = Unprotect(stored.ProtectedAppSecret),
                 UserId = string.IsNullOrWhiteSpace(stored.UserId) ? "admin" : stored.UserId,
                 VerifyTls = stored.VerifyTls,
-                Groups = stored.Groups is { Count: > 0 } ? stored.Groups : AppSettings.DefaultGroups()
+                Groups = stored.Groups is { Count: > 0 } ? stored.Groups : AppSettings.DefaultGroups(),
+                ManagedGates = stored.ManagedGates ?? [],
+                AdminPasswordSalt = stored.AdminPasswordSalt,
+                AdminPasswordHash = stored.AdminPasswordHash
             };
         }
         catch
@@ -58,7 +61,10 @@ public static class SettingsService
             ProtectedAppSecret = Protect(settings.AppSecret),
             UserId = settings.UserId.Trim(),
             VerifyTls = settings.VerifyTls,
-            Groups = settings.Groups
+            Groups = settings.Groups,
+            ManagedGates = settings.ManagedGates,
+            AdminPasswordSalt = settings.AdminPasswordSalt,
+            AdminPasswordHash = settings.AdminPasswordHash
         };
         File.WriteAllText(SettingsPath, JsonSerializer.Serialize(stored, JsonOptions));
     }
@@ -72,7 +78,6 @@ public static class SettingsService
         }
         catch
         {
-            // Logging must never block turnstile operation.
         }
     }
 
