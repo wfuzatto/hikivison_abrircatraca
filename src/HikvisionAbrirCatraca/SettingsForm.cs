@@ -237,6 +237,9 @@ public sealed class SettingsForm : Form
             AppSecret = source.AppSecret,
             UserId = source.UserId,
             VerifyTls = source.VerifyTls,
+            AdminPasswordSalt = source.AdminPasswordSalt,
+            AdminPasswordHash = source.AdminPasswordHash,
+            ManagedGates = source.ManagedGates.Select(x => x.Clone()).ToList(),
             Groups = source.Groups.Select(x => new GateGroup
             {
                 Name = x.Name,
