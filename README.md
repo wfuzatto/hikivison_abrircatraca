@@ -1,115 +1,169 @@
 # Hikvision Abrir Catraca
 
-Aplicativo Windows simples para a operação abrir as catracas do AcquaVale sem precisar acessar o HikCentral Professional.
+Aplicativo Windows para abrir diretamente as catracas Hikvision do AcquaVale, sem depender do HikCentral Professional.
 
-## Organização operacional
+## Arquitetura atual
 
-A tela principal é dividida exatamente pelos Access Levels existentes no HikCentral:
+O HikCentral não participa mais do fluxo de abertura.
 
-- **ENTRADA ACQUAVALE** — catracas associadas aos equipamentos/áreas 192.168.104.12, .13, .14 e .15.
-- **SAIDA ACQUAVALE** — 192.168.104.22, .23 e .24.
-- **CATRACAS SABIA** — 192.168.81.177 e .178.
-- **LOJA ACQUAVALE** — 192.168.104.89.
+\`\`\`text
+Aplicativo Windows
+        |
+        | HTTP/HTTPS + Digest Authentication
+        v
+Catraca Hikvision
+        |
+        | ISAPI
+        v
+/ISAPI/AccessControl/RemoteControl/door/{doorNo}
+\`\`\`
 
-> Os IPs acima são somente referência visual da configuração atual. O aplicativo **não usa IP como identificador de porta**. Em cada abertura ele consulta o Access Level no HikCentral e usa os `Element.ID` reais retornados pela OpenAPI.
+O comando usado para uma abertura normal é um \`PUT\` com XML:
 
-## Como funciona
+\`\`\`xml
+<RemoteControlDoor version="2.0" xmlns="http://www.isapi.org/ver20/XMLSchema">
+  <cmd>open</cmd>
+</RemoteControlDoor>
+\`\`\`
 
-1. O operador clica em um dos quatro botões grandes.
-2. O aplicativo consulta `POST /artemis/api/acs/v1/privilege/group`.
-3. Localiza o Access Level pelo nome.
-4. Extrai os IDs das portas/catracas em `ElementList[].Element.ID`.
-5. Envia `POST /artemis/api/acs/v1/door/doControl` com `controlType=2` (open).
-6. Mostra sucesso/falha de cada porta na própria tela.
+Não existe AppKey, AppSecret ou OpenAPI do HikCentral nesta versão.
 
-A implementação usa a mesma assinatura Artemis/OpenAPI já usada no projeto `integracao_catracas_hikivision`.
+## Grupos operacionais
 
-## Configuração no HikCentral
+A tela principal continua separada como solicitado:
 
-Crie/edite a aplicação OpenAPI utilizada pelo projeto e autorize, no mínimo:
+- **ENTRADA ACQUAVALE** — referência atual: 192.168.104.12, .13, .14 e .15
+- **SAIDA ACQUAVALE** — referência atual: 192.168.104.22, .23 e .24
+- **CATRACAS SABIA** — referência atual: 192.168.81.177 e .178
+- **LOJA ACQUAVALE** — referência atual: 192.168.104.89
 
-- `POST /artemis/api/acs/v1/privilege/group`
-- `POST /artemis/api/acs/v1/door/doControl`
+O cadastro real de cada equipamento é feito na área **Administração**.
 
-Não é necessário usar usuário/senha do Web Client. O aplicativo usa **AppKey + AppSecret** da OpenAPI.
+## Administração
 
-## Primeiro uso
+A área administrativa é protegida por senha.
 
-1. Abra **Configurações**.
-2. Informe a URL do HikCentral, por exemplo `https://127.0.0.1` ou o IP/hostname do servidor.
-3. Informe AppKey, AppSecret e User ID.
-4. Use **Testar conexão e grupos**.
-5. Salve.
+No primeiro acesso o aplicativo solicita a criação da senha administrativa.
 
-O AppSecret é armazenado localmente com DPAPI (escopo do usuário do Windows), não no repositório.
+Para cada catraca podem ser configurados:
 
-## Compilação automática no GitHub
+- nome amigável;
+- IP ou hostname;
+- porta HTTP/HTTPS;
+- HTTP ou HTTPS;
+- validação do certificado TLS;
+- usuário da própria catraca;
+- senha da própria catraca;
+- Door Nº usado pelo ISAPI;
+- grupo operacional;
+- ativa/inativa.
 
-O workflow `.github/workflows/build-windows.yml` gera um executável Windows self-contained x64 e publica o ZIP como artifact do GitHub Actions.
+A tela permite:
 
-Caminho no GitHub:
+- adicionar;
+- editar;
+- excluir;
+- ativar/desativar;
+- testar conexão sem abrir;
+- testar abertura real individual;
+- testar conexão com todas as catracas;
+- alterar senha administrativa.
 
-**Actions > Build Windows EXE > última execução > Artifacts > HikvisionAbrirCatraca-win-x64**
+## Teste de conexão
 
-## Compilar pelo VS Code / PowerShell
+O teste consulta diretamente:
 
-Se preferir compilar localmente:
+\`\`\`text
+GET /ISAPI/System/deviceInfo
+\`\`\`
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1
-```
+e mostra, quando o dispositivo fornece, modelo e versão de firmware.
 
-Saída:
+Isso permite validar IP, porta, usuário e senha sem acionar a catraca.
 
-```
-dist\HikvisionAbrirCatraca.exe
-```
+## Abertura
 
-Também pode executar diretamente:
+Ao clicar, por exemplo, em **ABRIR ENTRADA ACQUAVALE**, o aplicativo pega todas as catracas ativas desse grupo e envia o comando diretamente para cada IP.
 
-```powershell
-dotnet run --project .\src\HikvisionAbrirCatraca\HikvisionAbrirCatraca.csproj
-```
+Os comandos são enviados em paralelo para reduzir o tempo de abertura do conjunto.
+
+Se quatro catracas estiverem cadastradas e uma estiver offline, a tela informa algo semelhante a:
+
+\`\`\`text
+3/4 abriram.
+Falha: Entrada 3 (192.168.104.14): timeout
+\`\`\`
+
+As demais continuam sendo acionadas mesmo quando uma apresenta erro.
+
+## Autenticação
+
+A integração direta usa a conta local do próprio equipamento Hikvision através de HTTP Digest Authentication.
+
+A senha de cada catraca é armazenada no Windows usando DPAPI no escopo do usuário atual. Ela não é publicada no GitHub nem fica gravada em texto puro no arquivo de configuração.
+
+A senha da área administrativa é armazenada como hash PBKDF2 com salt.
+
+## Configuração inicial
+
+1. Execute o aplicativo.
+2. Abra **Administração**.
+3. Crie a senha administrativa.
+4. Clique em **Adicionar**.
+5. Informe IP, porta, usuário e senha da catraca.
+6. Deixe **Door Nº = 1** inicialmente.
+7. Escolha o grupo operacional.
+8. Salve.
+9. Use **Testar conexão**.
+10. Depois use **Testar abertura**.
+11. Repita para as demais catracas.
+
+Depois dos testes individuais, os botões grandes da tela operacional ficam prontos para uso.
+
+## Door Nº
+
+Na maioria dos terminais/controladores com uma única porta o valor inicial é \`1\`.
+
+Equipamentos com mais de uma porta/relé podem utilizar \`2\`, \`3\` etc. O valor é configurável por catraca sem recompilar o aplicativo.
 
 ## Segurança operacional
 
-- Abertura é de pulso normal; o projeto **não usa** `remain open`.
-- O botão fica temporariamente bloqueado enquanto o comando está sendo processado.
-- Há timeout de rede e log local das operações.
-- Credenciais reais não fazem parte do Git.
-- A opção de validação TLS deve ficar ligada quando o servidor tiver certificado confiável.
+- o aplicativo usa apenas o comando \`open\`;
+- não usa \`alwaysOpen\`;
+- uma catraca pode ser desativada sem ser excluída;
+- há timeout de rede;
+- todos os acionamentos são registrados no log local;
+- a área de cadastro é protegida por senha;
+- credenciais não são versionadas no Git.
 
-## Observação sobre direção
+## Compilação automática
 
-Versões atuais do HikCentral exigem `controlDirection`: 0 = entrada e 1 = saída. Por padrão os quatro grupos usam 0, pois cada Access Level já aponta para catracas físicas separadas. Se algum torniquete exigir direção 1, altere apenas esse grupo em **Configurações**; não é necessário recompilar.
+O workflow:
 
+\`\`\`text
+.github/workflows/build-windows.yml
+\`\`\`
 
-## Administração de catracas
+gera uma versão Windows x64 self-contained.
 
-A versão atual possui uma área **Administração** protegida por senha.
+No GitHub:
 
-No primeiro acesso, o sistema solicita a criação da senha administrativa. A senha não é armazenada em texto puro: é persistido somente um hash PBKDF2 com salt.
+**Actions > Build Windows EXE > Artifacts > HikvisionAbrirCatraca-win-x64**
 
-A tela administrativa permite:
+## Compilar no VS Code
 
-- adicionar catraca manualmente;
-- editar nome, Door Index Code, IP/referência, grupo, direção e status ativo/inativo;
-- excluir catraca;
-- testar a abertura de uma única catraca;
-- sincronizar/importar automaticamente as catracas dos quatro Access Levels do HikCentral;
-- alterar a senha administrativa.
+\`\`\`powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+\`\`\`
 
-### Regra de operação
+Saída:
 
-Quando um grupo ainda não possui cadastro local, o botão principal continua descobrindo as catracas pelo Access Level do HikCentral, como antes.
+\`\`\`text
+dist\HikvisionAbrirCatraca.exe
+\`\`\`
 
-Depois que houver catracas cadastradas/importadas para um grupo, o aplicativo passa a usar **somente as catracas locais marcadas como Ativas**. Isso permite retirar temporariamente uma catraca da operação sem alterar o HikCentral.
+## Observação sobre compatibilidade
 
-A sincronização usa o `Door Index Code` como chave para evitar duplicidade.
+A integração foi feita usando a interface ISAPI padrão de controle de acesso da Hikvision. O suporte ao endpoint de abertura depende do modelo e firmware da catraca/controladora.
 
-### Grupos mantidos
-
-- ENTRADA ACQUAVALE
-- SAIDA ACQUAVALE (também reconhece o nome legado SAIDA AQCUAVALE)
-- CATRACAS SABIA
-- LOJA ACQUAVALE
+O botão **Testar conexão** identifica o equipamento sem abrir a porta. O botão **Testar abertura** deve ser usado durante a implantação para confirmar o Door Nº correto em cada modelo.
