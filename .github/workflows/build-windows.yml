@@ -1,0 +1,42 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "build.ps1"
+      - ".github/workflows/build-windows.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore .\src\HikvisionAbrirCatraca\HikvisionAbrirCatraca.csproj
+
+      - name: Publish single EXE
+        run: dotnet publish .\src\HikvisionAbrirCatraca\HikvisionAbrirCatraca.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\dist
+
+      - name: Create ZIP
+        shell: powershell
+        run: Compress-Archive -Path .\dist\* -DestinationPath .\HikvisionAbrirCatraca-win-x64.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HikvisionAbrirCatraca-win-x64
+          path: HikvisionAbrirCatraca-win-x64.zip
+          if-no-files-found: error
+          retention-days: 30
