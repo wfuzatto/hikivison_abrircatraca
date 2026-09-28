@@ -11,6 +11,7 @@ public sealed class MainForm : Form
     private readonly Label _status;
     private readonly FlowLayoutPanel _cards;
     private readonly Button _settingsButton;
+    private readonly Button _adminButton;
     private readonly List<Button> _gateButtons = [];
     private CancellationTokenSource? _operationCts;
 
@@ -21,7 +22,7 @@ public sealed class MainForm : Form
         Text = "AcquaVale - Abrir Catracas";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(860, 620);
-        Size = new Size(980, 700);
+        Size = new Size(1000, 700);
         BackColor = Color.FromArgb(245, 247, 250);
         Font = new Font("Segoe UI", 10F);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -44,10 +45,11 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            ColumnCount = 2,
+            ColumnCount = 3,
             Margin = new Padding(0, 0, 0, 18)
         };
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var heading = new Panel { Dock = DockStyle.Fill, AutoSize = true };
@@ -69,21 +71,15 @@ public sealed class MainForm : Form
         heading.Controls.Add(title);
         heading.Controls.Add(subtitle);
 
-        _settingsButton = new Button
-        {
-            Text = "⚙ Configurações",
-            AutoSize = true,
-            Height = 42,
-            Padding = new Padding(12, 0, 12, 0),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Cursor = Cursors.Hand
-        };
-        _settingsButton.FlatAppearance.BorderColor = Color.FromArgb(210, 215, 223);
+        _adminButton = HeaderButton("🔒 Administração");
+        _adminButton.Click += (_, _) => OpenAdministration();
+
+        _settingsButton = HeaderButton("⚙ Configurações");
         _settingsButton.Click += (_, _) => OpenSettings();
 
         header.Controls.Add(heading, 0, 0);
-        header.Controls.Add(_settingsButton, 1, 0);
+        header.Controls.Add(_adminButton, 1, 0);
+        header.Controls.Add(_settingsButton, 2, 0);
         root.Controls.Add(header, 0, 0);
 
         _cards = new FlowLayoutPanel
@@ -130,7 +126,7 @@ public sealed class MainForm : Form
         footer.Controls.Add(logButton);
         footer.Controls.Add(new Label
         {
-            Text = "Um clique abre somente as catracas do grupo selecionado.",
+            Text = "Um clique abre somente as catracas ativas do grupo selecionado.",
             AutoSize = true,
             ForeColor = Color.FromArgb(98, 108, 121),
             Padding = new Padding(12, 7, 0, 0)
@@ -141,6 +137,23 @@ public sealed class MainForm : Form
         FormClosing += (_, _) => _operationCts?.Cancel();
     }
 
+    private Button HeaderButton(string text)
+    {
+        var button = new Button
+        {
+            Text = text,
+            AutoSize = true,
+            Height = 42,
+            Padding = new Padding(12, 0, 12, 0),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Cursor = Cursors.Hand,
+            Margin = new Padding(8, 0, 0, 0)
+        };
+        button.FlatAppearance.BorderColor = Color.FromArgb(210, 215, 223);
+        return button;
+    }
+
     private void BuildGateCards()
     {
         _cards.SuspendLayout();
@@ -149,9 +162,15 @@ public sealed class MainForm : Form
 
         foreach (var group in _settings.Groups)
         {
+            var managed = _settings.ManagedGates.Where(x => x.GroupName == group.Name).ToList();
+            var activeCount = managed.Count(x => x.Enabled);
+            var referenceText = managed.Count > 0
+                ? $"{activeCount} ativa(s) de {managed.Count} cadastrada(s)"
+                : "automático pelo Access Level · " + group.Reference;
+
             var card = new Panel
             {
-                Width = 430,
+                Width = 440,
                 Height = 215,
                 Margin = new Padding(0, 0, 18, 18),
                 BackColor = Color.White
@@ -161,7 +180,7 @@ public sealed class MainForm : Form
             {
                 Text = group.Name,
                 AutoSize = false,
-                Width = 390,
+                Width = 400,
                 Height = 30,
                 Location = new Point(20, 18),
                 Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold),
@@ -170,9 +189,9 @@ public sealed class MainForm : Form
 
             var reference = new Label
             {
-                Text = "Referência: " + group.Reference,
+                Text = referenceText,
                 AutoSize = false,
-                Width = 390,
+                Width = 400,
                 Height = 24,
                 Location = new Point(20, 49),
                 ForeColor = Color.FromArgb(105, 114, 126)
@@ -181,7 +200,7 @@ public sealed class MainForm : Form
             var button = new Button
             {
                 Text = string.IsNullOrWhiteSpace(group.ButtonText) ? "ABRIR " + group.Name : group.ButtonText,
-                Width = 390,
+                Width = 400,
                 Height = 112,
                 Location = new Point(20, 82),
                 Font = new Font("Segoe UI Semibold", 17F, FontStyle.Bold),
@@ -222,29 +241,43 @@ public sealed class MainForm : Form
 
         try
         {
-            SetStatus($"Localizando as catracas de {group.Name}...", null);
             using var client = new HikCentralClient(_settings);
-            var doors = await client.GetDoorsForGroupAsync(group, _operationCts.Token);
 
-            SetStatus($"Enviando abertura para {doors.Count} catraca(s) de {group.Name}...", null);
-            var result = await client.OpenDoorsAsync(doors, group.ControlDirection, _operationCts.Token);
+            var configuredForGroup = _settings.ManagedGates
+                .Where(x => x.GroupName.Equals(group.Name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-            var failures = result.Where(x => !x.Success).ToArray();
-            var doorNames = string.Join(", ", doors.Select(x => x.Name));
-
-            if (failures.Length == 0)
+            if (configuredForGroup.Count == 0)
             {
-                SetStatus($"ABERTURA ENVIADA: {group.Name} — {doors.Count} catraca(s).", true);
-                SettingsService.Log($"OPEN OK group={group.Name} direction={group.ControlDirection} doors={string.Join(",", doors.Select(x => x.Id))} names={doorNames}");
-                System.Media.SystemSounds.Asterisk.Play();
+                SetStatus($"Localizando as catracas de {group.Name} no HikCentral...", null);
+                var automaticDoors = await client.GetDoorsForGroupAsync(group, _operationCts.Token);
+                SetStatus($"Enviando abertura para {automaticDoors.Count} catraca(s) de {group.Name}...", null);
+                var automaticResult = await client.OpenDoorsAsync(automaticDoors, group.ControlDirection, _operationCts.Token);
+                FinishOperation(group.Name, automaticDoors, automaticResult);
+                return;
             }
-            else
+
+            var enabled = configuredForGroup.Where(x => x.Enabled).ToList();
+            if (enabled.Count == 0)
+                throw new HikCentralException($"O grupo {group.Name} possui cadastro local, mas todas as catracas estão desativadas.");
+
+            SetStatus($"Enviando abertura para {enabled.Count} catraca(s) ativas de {group.Name}...", null);
+
+            var allResults = new List<DoorControlResult>();
+            var allDoors = new List<DoorInfo>();
+
+            foreach (var directionBatch in enabled.GroupBy(x => x.ControlDirection))
             {
-                var detail = string.Join("; ", failures.Select(x => $"{x.DoorId}: {x.Description}"));
-                SetStatus($"HikCentral retornou falha em {failures.Length} catraca(s): {detail}", false);
-                SettingsService.Log($"OPEN PARTIAL group={group.Name} failures={detail}");
-                System.Media.SystemSounds.Exclamation.Play();
+                var doors = directionBatch
+                    .Select(x => new DoorInfo(x.DoorIndexCode, x.Name))
+                    .ToArray();
+
+                allDoors.AddRange(doors);
+                var batchResult = await client.OpenDoorsAsync(doors, directionBatch.Key, _operationCts.Token);
+                allResults.AddRange(batchResult);
             }
+
+            FinishOperation(group.Name, allDoors, allResults);
         }
         catch (OperationCanceledException)
         {
@@ -261,6 +294,39 @@ public sealed class MainForm : Form
         {
             SetBusy(false);
         }
+    }
+
+    private void FinishOperation(string groupName, IReadOnlyList<DoorInfo> doors, IReadOnlyList<DoorControlResult> result)
+    {
+        var failures = result.Where(x => !x.Success).ToArray();
+        var doorNames = string.Join(", ", doors.Select(x => x.Name));
+
+        if (failures.Length == 0)
+        {
+            SetStatus($"ABERTURA ENVIADA: {groupName} — {doors.Count} catraca(s).", true);
+            SettingsService.Log($"OPEN OK group={groupName} doors={string.Join(",", doors.Select(x => x.Id))} names={doorNames}");
+            System.Media.SystemSounds.Asterisk.Play();
+        }
+        else
+        {
+            var detail = string.Join("; ", failures.Select(x => $"{x.DoorId}: {x.Description}"));
+            SetStatus($"HikCentral retornou falha em {failures.Length} catraca(s): {detail}", false);
+            SettingsService.Log($"OPEN PARTIAL group={groupName} failures={detail}");
+            System.Media.SystemSounds.Exclamation.Play();
+        }
+    }
+
+    private void OpenAdministration()
+    {
+        using var login = new AdminLoginForm(_settings);
+        if (login.ShowDialog(this) != DialogResult.OK) return;
+
+        using var admin = new AdminForm(_settings);
+        admin.ShowDialog(this);
+
+        _settings = SettingsService.Load();
+        BuildGateCards();
+        SetStatus("Cadastro administrativo atualizado.", true);
     }
 
     private void OpenSettings()
@@ -298,6 +364,7 @@ public sealed class MainForm : Form
     {
         foreach (var button in _gateButtons) button.Enabled = !busy;
         _settingsButton.Enabled = !busy;
+        _adminButton.Enabled = !busy;
         UseWaitCursor = busy;
     }
 
