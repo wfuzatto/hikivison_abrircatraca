@@ -34,13 +34,8 @@ public static class SettingsService
 
             return new AppSettings
             {
-                BaseUrl = stored.BaseUrl,
-                AppKey = stored.AppKey,
-                AppSecret = Unprotect(stored.ProtectedAppSecret),
-                UserId = string.IsNullOrWhiteSpace(stored.UserId) ? "admin" : stored.UserId,
-                VerifyTls = stored.VerifyTls,
                 Groups = stored.Groups is { Count: > 0 } ? stored.Groups : AppSettings.DefaultGroups(),
-                ManagedGates = stored.ManagedGates ?? [],
+                ManagedGates = (stored.ManagedGates ?? []).Select(ToRuntimeGate).ToList(),
                 AdminPasswordSalt = stored.AdminPasswordSalt,
                 AdminPasswordHash = stored.AdminPasswordHash
             };
@@ -56,13 +51,8 @@ public static class SettingsService
         Directory.CreateDirectory(DataDirectory);
         var stored = new StoredSettings
         {
-            BaseUrl = settings.BaseUrl.Trim().TrimEnd('/'),
-            AppKey = settings.AppKey.Trim(),
-            ProtectedAppSecret = Protect(settings.AppSecret),
-            UserId = settings.UserId.Trim(),
-            VerifyTls = settings.VerifyTls,
             Groups = settings.Groups,
-            ManagedGates = settings.ManagedGates,
+            ManagedGates = settings.ManagedGates.Select(ToStoredGate).ToList(),
             AdminPasswordSalt = settings.AdminPasswordSalt,
             AdminPasswordHash = settings.AdminPasswordHash
         };
@@ -80,6 +70,36 @@ public static class SettingsService
         {
         }
     }
+
+    private static StoredManagedGate ToStoredGate(ManagedGate gate) => new()
+    {
+        Id = gate.Id,
+        Name = gate.Name,
+        Host = gate.Host,
+        Port = gate.Port,
+        UseHttps = gate.UseHttps,
+        VerifyTls = gate.VerifyTls,
+        Username = gate.Username,
+        ProtectedPassword = Protect(gate.Password),
+        DoorNo = gate.DoorNo,
+        GroupName = gate.GroupName,
+        Enabled = gate.Enabled
+    };
+
+    private static ManagedGate ToRuntimeGate(StoredManagedGate gate) => new()
+    {
+        Id = string.IsNullOrWhiteSpace(gate.Id) ? Guid.NewGuid().ToString("N") : gate.Id,
+        Name = gate.Name,
+        Host = gate.Host,
+        Port = gate.Port is > 0 and <= 65535 ? gate.Port : (gate.UseHttps ? 443 : 80),
+        UseHttps = gate.UseHttps,
+        VerifyTls = gate.VerifyTls,
+        Username = string.IsNullOrWhiteSpace(gate.Username) ? "admin" : gate.Username,
+        Password = Unprotect(gate.ProtectedPassword),
+        DoorNo = gate.DoorNo > 0 ? gate.DoorNo : 1,
+        GroupName = gate.GroupName,
+        Enabled = gate.Enabled
+    };
 
     private static string Protect(string value)
     {
