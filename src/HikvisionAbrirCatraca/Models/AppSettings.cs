@@ -8,11 +8,18 @@ public sealed class AppSettings
     public string UserId { get; set; } = "admin";
     public bool VerifyTls { get; set; }
     public List<GateGroup> Groups { get; set; } = DefaultGroups();
+    public List<ManagedGate> ManagedGates { get; set; } = [];
+    public string AdminPasswordSalt { get; set; } = "";
+    public string AdminPasswordHash { get; set; } = "";
 
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(BaseUrl) &&
         !string.IsNullOrWhiteSpace(AppKey) &&
         !string.IsNullOrWhiteSpace(AppSecret);
+
+    public bool HasAdminPassword =>
+        !string.IsNullOrWhiteSpace(AdminPasswordSalt) &&
+        !string.IsNullOrWhiteSpace(AdminPasswordHash);
 
     public static List<GateGroup> DefaultGroups() =>
     [
@@ -64,6 +71,30 @@ public sealed class GateGroup
     }
 }
 
+public sealed class ManagedGate
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "";
+    public string DoorIndexCode { get; set; } = "";
+    public string IpAddress { get; set; } = "";
+    public string GroupName { get; set; } = "";
+    public int ControlDirection { get; set; }
+    public bool Enabled { get; set; } = true;
+    public bool ImportedFromHikCentral { get; set; }
+
+    public ManagedGate Clone() => new()
+    {
+        Id = Id,
+        Name = Name,
+        DoorIndexCode = DoorIndexCode,
+        IpAddress = IpAddress,
+        GroupName = GroupName,
+        ControlDirection = ControlDirection,
+        Enabled = Enabled,
+        ImportedFromHikCentral = ImportedFromHikCentral
+    };
+}
+
 internal sealed class StoredSettings
 {
     public string BaseUrl { get; set; } = "https://127.0.0.1";
@@ -72,4 +103,7 @@ internal sealed class StoredSettings
     public string UserId { get; set; } = "admin";
     public bool VerifyTls { get; set; }
     public List<GateGroup>? Groups { get; set; }
+    public List<ManagedGate>? ManagedGates { get; set; }
+    public string AdminPasswordSalt { get; set; } = "";
+    public string AdminPasswordHash { get; set; } = "";
 }
