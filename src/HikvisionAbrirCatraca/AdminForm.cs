@@ -1,5 +1,4 @@
 using System.Drawing;
-using System.Text.RegularExpressions;
 using HikvisionAbrirCatraca.Models;
 using HikvisionAbrirCatraca.Services;
 
@@ -16,10 +15,10 @@ public sealed class AdminForm : Form
     {
         _settings = settings;
 
-        Text = "Administração de Catracas";
+        Text = "Administração de Catracas - Conexão Direta";
         StartPosition = FormStartPosition.CenterParent;
-        Size = new Size(1080, 700);
-        MinimumSize = new Size(900, 600);
+        Size = new Size(1180, 720);
+        MinimumSize = new Size(980, 600);
         Font = new Font("Segoe UI", 10F);
         BackColor = Color.FromArgb(245, 247, 250);
 
@@ -36,15 +35,23 @@ public sealed class AdminForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Controls.Add(root);
 
-        var title = new Label
+        var heading = new Panel { Dock = DockStyle.Top, Height = 66 };
+        heading.Controls.Add(new Label
         {
             Text = "CONTROLE DE CATRACAS",
             AutoSize = true,
             Font = new Font("Segoe UI Semibold", 20F, FontStyle.Bold),
             ForeColor = Color.FromArgb(35, 42, 52),
-            Margin = new Padding(0, 0, 0, 12)
-        };
-        root.Controls.Add(title, 0, 0);
+            Location = new Point(0, 0)
+        });
+        heading.Controls.Add(new Label
+        {
+            Text = "Conexão direta ISAPI — sem HikCentral",
+            AutoSize = true,
+            ForeColor = Color.FromArgb(95, 105, 118),
+            Location = new Point(3, 39)
+        });
+        root.Controls.Add(heading, 0, 0);
 
         var actions = new FlowLayoutPanel
         {
@@ -58,21 +65,22 @@ public sealed class AdminForm : Form
         actions.Controls.Add(MakeButton("+ Adicionar", (_, _) => AddGate()));
         actions.Controls.Add(MakeButton("Editar", (_, _) => EditSelected()));
         actions.Controls.Add(MakeButton("Excluir", (_, _) => DeleteSelected()));
-        actions.Controls.Add(MakeButton("Testar abertura", async (_, _) => await TestSelectedAsync()));
-        actions.Controls.Add(MakeButton("Sincronizar do HikCentral", async (_, _) => await SyncFromHikCentralAsync()));
-        actions.Controls.Add(MakeButton("Alterar senha", (_, _) => ChangePassword()));
+        actions.Controls.Add(MakeButton("Testar conexão", async (_, _) => await TestConnectionAsync()));
+        actions.Controls.Add(MakeButton("Testar abertura", async (_, _) => await TestOpeningAsync()));
+        actions.Controls.Add(MakeButton("Testar todas", async (_, _) => await TestAllAsync()));
+        actions.Controls.Add(MakeButton("Alterar senha admin", (_, _) => ChangePassword()));
         root.Controls.Add(actions, 0, 1);
 
         ConfigureGrid();
         root.Controls.Add(_grid, 0, 2);
 
         _status.AutoSize = false;
-        _status.Height = 42;
+        _status.Height = 46;
         _status.Dock = DockStyle.Top;
         _status.TextAlign = ContentAlignment.MiddleLeft;
         _status.Padding = new Padding(10, 0, 10, 0);
         _status.BackColor = Color.White;
-        _status.Text = "As alterações são salvas localmente neste computador.";
+        _status.Text = "Cadastre IP, usuário, senha e door Nº de cada catraca.";
         root.Controls.Add(_status, 0, 3);
 
         RefreshGrid();
@@ -96,43 +104,49 @@ public sealed class AdminForm : Form
         {
             DataPropertyName = nameof(ManagedGate.Name),
             HeaderText = "Nome",
-            Width = 220
+            Width = 185
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             DataPropertyName = nameof(ManagedGate.GroupName),
             HeaderText = "Grupo",
-            Width = 190
+            Width = 180
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            DataPropertyName = nameof(ManagedGate.DoorIndexCode),
-            HeaderText = "Door Index Code",
-            Width = 170
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = nameof(ManagedGate.IpAddress),
-            HeaderText = "IP / referência",
+            DataPropertyName = nameof(ManagedGate.Host),
+            HeaderText = "IP / host",
             Width = 140
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            DataPropertyName = nameof(ManagedGate.ControlDirection),
-            HeaderText = "Direção",
-            Width = 80
+            DataPropertyName = nameof(ManagedGate.Port),
+            HeaderText = "Porta",
+            Width = 65
+        });
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            DataPropertyName = nameof(ManagedGate.UseHttps),
+            HeaderText = "HTTPS",
+            Width = 65
+        });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(ManagedGate.Username),
+            HeaderText = "Usuário",
+            Width = 90
+        });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(ManagedGate.DoorNo),
+            HeaderText = "Door Nº",
+            Width = 70
         });
         _grid.Columns.Add(new DataGridViewCheckBoxColumn
         {
             DataPropertyName = nameof(ManagedGate.Enabled),
             HeaderText = "Ativa",
-            Width = 65
-        });
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            DataPropertyName = nameof(ManagedGate.ImportedFromHikCentral),
-            HeaderText = "Importada",
-            Width = 85
+            Width = 60
         });
 
         _grid.DataSource = _binding;
@@ -187,16 +201,20 @@ public sealed class AdminForm : Form
         using var form = new GateEditForm(null, _settings.Groups);
         if (form.ShowDialog(this) != DialogResult.OK) return;
 
-        if (_settings.ManagedGates.Any(x =>
-                x.DoorIndexCode.Equals(form.Gate.DoorIndexCode, StringComparison.OrdinalIgnoreCase)))
+        if (HasDuplicate(form.Gate, null))
         {
-            MessageBox.Show(this, "Já existe uma catraca com esse Door Index Code.", "Cadastro", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(
+                this,
+                "Já existe uma catraca com o mesmo IP/porta e Door Nº.",
+                "Cadastro",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
             return;
         }
 
         _settings.ManagedGates.Add(form.Gate);
         SaveAndRefresh(form.Gate.Id, $"Catraca adicionada: {form.Gate.Name}");
-        SettingsService.Log($"ADMIN GATE ADD name={form.Gate.Name} door={form.Gate.DoorIndexCode} group={form.Gate.GroupName}");
+        SettingsService.Log($"ADMIN GATE ADD name={form.Gate.Name} endpoint={form.Gate.Endpoint} door={form.Gate.DoorNo}");
     }
 
     private void EditSelected()
@@ -204,18 +222,21 @@ public sealed class AdminForm : Form
         var selected = SelectedGate;
         if (selected is null)
         {
-            MessageBox.Show(this, "Selecione uma catraca.", "Administração", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            InfoSelect();
             return;
         }
 
         using var form = new GateEditForm(selected, _settings.Groups);
         if (form.ShowDialog(this) != DialogResult.OK) return;
 
-        if (_settings.ManagedGates.Any(x =>
-                x.Id != selected.Id &&
-                x.DoorIndexCode.Equals(form.Gate.DoorIndexCode, StringComparison.OrdinalIgnoreCase)))
+        if (HasDuplicate(form.Gate, selected.Id))
         {
-            MessageBox.Show(this, "Já existe outra catraca com esse Door Index Code.", "Cadastro", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(
+                this,
+                "Já existe outra catraca com o mesmo IP/porta e Door Nº.",
+                "Cadastro",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
             return;
         }
 
@@ -223,21 +244,28 @@ public sealed class AdminForm : Form
         if (index >= 0) _settings.ManagedGates[index] = form.Gate;
 
         SaveAndRefresh(form.Gate.Id, $"Catraca atualizada: {form.Gate.Name}");
-        SettingsService.Log($"ADMIN GATE EDIT name={form.Gate.Name} door={form.Gate.DoorIndexCode} group={form.Gate.GroupName}");
+        SettingsService.Log($"ADMIN GATE EDIT name={form.Gate.Name} endpoint={form.Gate.Endpoint} door={form.Gate.DoorNo}");
     }
+
+    private bool HasDuplicate(ManagedGate gate, string? ignoreId) =>
+        _settings.ManagedGates.Any(x =>
+            x.Id != ignoreId &&
+            x.Host.Equals(gate.Host, StringComparison.OrdinalIgnoreCase) &&
+            x.Port == gate.Port &&
+            x.DoorNo == gate.DoorNo);
 
     private void DeleteSelected()
     {
         var selected = SelectedGate;
         if (selected is null)
         {
-            MessageBox.Show(this, "Selecione uma catraca.", "Administração", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            InfoSelect();
             return;
         }
 
         var confirm = MessageBox.Show(
             this,
-            $"Excluir a catraca '{selected.Name}'?\n\nEla deixará de participar da abertura do grupo {selected.GroupName}.",
+            $"Excluir a catraca '{selected.Name}'?\n\n{selected.Endpoint} / door {selected.DoorNo}",
             "Confirmar exclusão",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning);
@@ -248,110 +276,102 @@ public sealed class AdminForm : Form
         SettingsService.Save(_settings);
         RefreshGrid();
         SetStatus($"Catraca excluída: {selected.Name}", true);
-        SettingsService.Log($"ADMIN GATE DELETE name={selected.Name} door={selected.DoorIndexCode} group={selected.GroupName}");
+        SettingsService.Log($"ADMIN GATE DELETE name={selected.Name} endpoint={selected.Endpoint} door={selected.DoorNo}");
     }
 
-    private async Task TestSelectedAsync()
+    private async Task TestConnectionAsync()
     {
-        var selected = SelectedGate;
-        if (selected is null)
+        var gate = SelectedGate;
+        if (gate is null)
         {
-            MessageBox.Show(this, "Selecione uma catraca.", "Administração", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            InfoSelect();
             return;
         }
 
-        if (!_settings.IsConfigured)
+        try
         {
-            SetStatus("Configure a OpenAPI do HikCentral antes do teste.", false);
+            SetStatus($"Conectando diretamente em {gate.Endpoint}...", null);
+            using var client = new DirectIsapiClient(gate);
+            var info = await client.GetDeviceInfoAsync();
+
+            var model = string.IsNullOrWhiteSpace(info.Model) ? "modelo não informado" : info.Model;
+            var firmware = string.IsNullOrWhiteSpace(info.FirmwareVersion) ? "" : $" · FW {info.FirmwareVersion}";
+            SetStatus($"Conexão OK: {gate.Name} · {model}{firmware}", true);
+            SettingsService.Log($"DIRECT TEST OK name={gate.Name} endpoint={gate.Endpoint} model={info.Model}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(ex.Message, false);
+            SettingsService.Log($"DIRECT TEST ERROR name={gate.Name} endpoint={gate.Endpoint} error={ex.Message}");
+        }
+    }
+
+    private async Task TestOpeningAsync()
+    {
+        var gate = SelectedGate;
+        if (gate is null)
+        {
+            InfoSelect();
             return;
         }
 
         var confirm = MessageBox.Show(
             this,
-            $"Enviar agora um comando de abertura SOMENTE para:\n\n{selected.Name}\n{selected.DoorIndexCode}",
-            "Testar abertura individual",
+            $"ABRIR AGORA esta catraca?\n\n{gate.Name}\n{gate.Endpoint}\nDoor Nº {gate.DoorNo}",
+            "Teste real de abertura",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning);
 
         if (confirm != DialogResult.Yes) return;
 
-        try
-        {
-            SetStatus($"Testando abertura de {selected.Name}...", null);
-            using var client = new HikCentralClient(_settings);
-            var result = await client.OpenDoorsAsync(
-                [new DoorInfo(selected.DoorIndexCode, selected.Name)],
-                selected.ControlDirection);
+        SetStatus($"Enviando abertura direta para {gate.Name}...", null);
+        using var client = new DirectIsapiClient(gate);
+        var result = await client.OpenAsync();
 
-            var ok = result.All(x => x.Success);
-            SetStatus(ok ? $"Abertura enviada para {selected.Name}." : $"HikCentral retornou falha para {selected.Name}.", ok);
-            SettingsService.Log($"ADMIN GATE TEST {(ok ? "OK" : "FAIL")} name={selected.Name} door={selected.DoorIndexCode}");
-        }
-        catch (Exception ex)
-        {
-            SetStatus(ex.Message, false);
-            SettingsService.Log($"ADMIN GATE TEST ERROR name={selected.Name} error={ex.Message}");
-        }
+        SetStatus(result.Success
+            ? $"Abertura confirmada por {gate.Name}."
+            : $"{gate.Name}: {result.Description}", result.Success);
+
+        SettingsService.Log(
+            $"DIRECT OPEN TEST {(result.Success ? "OK" : "FAIL")} name={gate.Name} endpoint={gate.Endpoint} door={gate.DoorNo} detail={result.Description}");
     }
 
-    private async Task SyncFromHikCentralAsync()
+    private async Task TestAllAsync()
     {
-        if (!_settings.IsConfigured)
+        var gates = _settings.ManagedGates.Where(x => x.Enabled).ToList();
+        if (gates.Count == 0)
         {
-            SetStatus("Configure a OpenAPI do HikCentral antes de sincronizar.", false);
+            SetStatus("Nenhuma catraca ativa cadastrada.", false);
             return;
         }
 
-        try
-        {
-            SetStatus("Consultando Access Levels e catracas no HikCentral...", null);
-            using var client = new HikCentralClient(_settings);
-            var imported = 0;
-            var updated = 0;
+        SetStatus($"Testando conexão com {gates.Count} catraca(s), sem abrir...", null);
 
-            foreach (var group in _settings.Groups)
+        var tasks = gates.Select(async gate =>
+        {
+            try
             {
-                var doors = await client.GetDoorsForGroupAsync(group);
-                foreach (var door in doors)
-                {
-                    var existing = _settings.ManagedGates.FirstOrDefault(x =>
-                        x.DoorIndexCode.Equals(door.Id, StringComparison.OrdinalIgnoreCase));
-
-                    var ip = ExtractIp(door.Name);
-                    if (existing is null)
-                    {
-                        _settings.ManagedGates.Add(new ManagedGate
-                        {
-                            Name = door.Name,
-                            DoorIndexCode = door.Id,
-                            IpAddress = ip,
-                            GroupName = group.Name,
-                            ControlDirection = group.ControlDirection,
-                            Enabled = true,
-                            ImportedFromHikCentral = true
-                        });
-                        imported++;
-                    }
-                    else
-                    {
-                        existing.Name = string.IsNullOrWhiteSpace(existing.Name) ? door.Name : existing.Name;
-                        if (string.IsNullOrWhiteSpace(existing.IpAddress)) existing.IpAddress = ip;
-                        existing.GroupName = group.Name;
-                        existing.ImportedFromHikCentral = true;
-                        updated++;
-                    }
-                }
+                using var client = new DirectIsapiClient(gate);
+                var info = await client.GetDeviceInfoAsync();
+                return (gate, ok: true, detail: string.IsNullOrWhiteSpace(info.Model) ? "OK" : info.Model);
             }
+            catch (Exception ex)
+            {
+                return (gate, ok: false, detail: ex.Message);
+            }
+        });
 
-            SettingsService.Save(_settings);
-            RefreshGrid();
-            SetStatus($"Sincronização concluída: {imported} adicionada(s), {updated} atualizada(s).", true);
-            SettingsService.Log($"ADMIN SYNC OK imported={imported} updated={updated}");
-        }
-        catch (Exception ex)
+        var results = await Task.WhenAll(tasks);
+        var failed = results.Where(x => !x.ok).ToList();
+
+        if (failed.Count == 0)
         {
-            SetStatus(ex.Message, false);
-            SettingsService.Log($"ADMIN SYNC ERROR error={ex.Message}");
+            SetStatus($"Todas as {results.Length} catracas responderam diretamente.", true);
+        }
+        else
+        {
+            SetStatus($"{results.Length - failed.Count}/{results.Length} responderam. Falhas: " +
+                      string.Join(" | ", failed.Select(x => $"{x.gate.Name}: {x.detail}")), false);
         }
     }
 
@@ -402,6 +422,14 @@ public sealed class AdminForm : Form
             SetStatus("Senha administrativa alterada.", true);
     }
 
+    private void InfoSelect() =>
+        MessageBox.Show(
+            this,
+            "Selecione uma catraca.",
+            "Administração",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+
     private void SaveAndRefresh(string id, string status)
     {
         SettingsService.Save(_settings);
@@ -424,11 +452,5 @@ public sealed class AdminForm : Form
             false => Color.FromArgb(253, 238, 238),
             _ => Color.White
         };
-    }
-
-    private static string ExtractIp(string value)
-    {
-        var match = Regex.Match(value ?? "", @"\b(?:\d{1,3}\.){3}\d{1,3}\b");
-        return match.Success ? match.Value : "";
     }
 }
