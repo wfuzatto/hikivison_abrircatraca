@@ -1,4 +1,6 @@
+using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 
 namespace HikvisionAbrirCatraca.Ui;
 
@@ -92,6 +94,16 @@ internal sealed class CardPanel : Panel
     }
 }
 
+internal enum ButtonGlyph
+{
+    None,
+    ChevronRight,
+    Lock,
+    Unlock,
+    Grid,
+    Back
+}
+
 internal class RoundedButton : Button
 {
     private bool _hovered;
@@ -102,6 +114,8 @@ internal class RoundedButton : Button
     public Color BorderColor { get; set; } = Color.Transparent;
     public int BorderSize { get; set; }
     public Color DisabledFillColor { get; set; } = Color.FromArgb(190, 199, 211);
+    public ButtonGlyph Glyph { get; set; }
+    public int GlyphLeft { get; set; } = 18;
 
     public RoundedButton()
     {
@@ -138,15 +152,69 @@ internal class RoundedButton : Button
             e.Graphics.DrawPath(border, path);
         }
 
+        var contentColor = Enabled ? ForeColor : Color.WhiteSmoke;
+        DrawGlyph(e.Graphics, contentColor);
+
         TextRenderer.DrawText(
             e.Graphics,
             Text,
             Font,
             rect,
-            Enabled ? ForeColor : Color.WhiteSmoke,
+            contentColor,
             TextFormatFlags.HorizontalCenter |
             TextFormatFlags.VerticalCenter |
             TextFormatFlags.EndEllipsis);
+    }
+
+    private void DrawGlyph(Graphics g, Color color)
+    {
+        if (Glyph == ButtonGlyph.None) return;
+
+        var cy = Height / 2f;
+        var x = GlyphLeft;
+        using var pen = new Pen(color, 2.2f)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round
+        };
+
+        switch (Glyph)
+        {
+            case ButtonGlyph.ChevronRight:
+                g.DrawLine(pen, x, cy - 5, x + 6, cy);
+                g.DrawLine(pen, x + 6, cy, x, cy + 5);
+                break;
+
+            case ButtonGlyph.Back:
+                g.DrawLine(pen, x + 7, cy - 6, x, cy);
+                g.DrawLine(pen, x, cy, x + 7, cy + 6);
+                g.DrawLine(pen, x, cy, x + 13, cy);
+                break;
+
+            case ButtonGlyph.Lock:
+            case ButtonGlyph.Unlock:
+            {
+                var body = new RectangleF(x, cy - 1, 14, 11);
+                using var bodyPath = RoundRect.Create(Rectangle.Round(body), 3);
+                g.DrawPath(pen, bodyPath);
+
+                var arcX = Glyph == ButtonGlyph.Unlock ? x + 6 : x + 2;
+                g.DrawArc(pen, arcX, cy - 10, 10, 12, 185, 170);
+                break;
+            }
+
+            case ButtonGlyph.Grid:
+                using (var brush = new SolidBrush(color))
+                {
+                    const int s = 5;
+                    g.FillRectangle(brush, x, (int)cy - 6, s, s);
+                    g.FillRectangle(brush, x + 8, (int)cy - 6, s, s);
+                    g.FillRectangle(brush, x, (int)cy + 2, s, s);
+                    g.FillRectangle(brush, x + 8, (int)cy + 2, s, s);
+                }
+                break;
+        }
     }
 
     private void UpdateRegion()
