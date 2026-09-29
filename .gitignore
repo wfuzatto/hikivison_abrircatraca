@@ -8,3 +8,7 @@ dist/
 *.log
 settings.json
 appsettings.local.json
+*.pfx
+*.p12
+*.pem
+*.key
