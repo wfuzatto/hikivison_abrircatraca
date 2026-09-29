@@ -130,6 +130,7 @@ Equipamentos com mais de uma porta/relé podem utilizar \`2\`, \`3\` etc. O valo
 
 - o aplicativo usa apenas o comando \`open\`;
 - não usa \`alwaysOpen\`;
+- cada acionamento da tela operacional abre somente uma catraca;
 - uma catraca pode ser desativada sem ser excluída;
 - há timeout de rede;
 - todos os acionamentos são registrados no log local;
