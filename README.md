@@ -83,18 +83,30 @@ Isso permite validar IP, porta, usuário e senha sem acionar a catraca.
 
 ## Abertura
 
-Ao clicar, por exemplo, em **ABRIR ENTRADA ACQUAVALE**, o aplicativo pega todas as catracas ativas desse grupo e envia o comando diretamente para cada IP.
+A operação funciona em duas etapas:
 
-Os comandos são enviados em paralelo para reduzir o tempo de abertura do conjunto.
+1. o operador seleciona o bloco/grupo;
+2. o aplicativo mostra as catracas ativas daquele bloco.
 
-Se quatro catracas estiverem cadastradas e uma estiver offline, a tela informa algo semelhante a:
+Dentro do bloco existem duas formas de operação:
+
+- **ABRIR ESTA CATRACA** — envia o comando somente para a catraca escolhida;
+- **ABRIR TODAS** — envia o comando para todas as catracas ativas daquele bloco.
+
+O botão **ABRIR TODAS** fica no topo da seção e exige confirmação antes de executar, para reduzir risco de acionamento acidental.
+
+Exemplo:
 
 \`\`\`text
-3/4 abriram.
-Falha: Entrada 3 (192.168.104.14): timeout
+ENTRADA ACQUAVALE                            [ ABRIR TODAS ]
+
+Entrada 01   192.168.104.12   [ ABRIR ESTA CATRACA ]
+Entrada 02   192.168.104.13   [ ABRIR ESTA CATRACA ]
+Entrada 03   192.168.104.14   [ ABRIR ESTA CATRACA ]
+Entrada 04   192.168.104.15   [ ABRIR ESTA CATRACA ]
 \`\`\`
 
-As demais continuam sendo acionadas mesmo quando uma apresenta erro.
+Na abertura em lote, os comandos são enviados em paralelo. Se uma catraca estiver offline, as demais continuam sendo acionadas e a tela informa quais falharam.
 
 ## Autenticação
 
@@ -130,7 +142,8 @@ Equipamentos com mais de uma porta/relé podem utilizar \`2\`, \`3\` etc. O valo
 
 - o aplicativo usa apenas o comando \`open\`;
 - não usa \`alwaysOpen\`;
-- cada acionamento da tela operacional abre somente uma catraca;
+- a abertura individual abre somente uma catraca;
+- a abertura em lote só ocorre pelo botão **ABRIR TODAS** dentro do bloco e exige confirmação;
 - uma catraca pode ser desativada sem ser excluída;
 - há timeout de rede;
 - todos os acionamentos são registrados no log local;
