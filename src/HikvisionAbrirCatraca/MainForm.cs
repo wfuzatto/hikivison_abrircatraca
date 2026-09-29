@@ -11,8 +11,9 @@ public sealed class MainForm : Form
     private readonly Label _status;
     private readonly FlowLayoutPanel _cards;
     private readonly Button _adminButton;
-    private readonly List<Button> _gateButtons = [];
+    private readonly List<Button> _actionButtons = [];
     private CancellationTokenSource? _operationCts;
+    private GateGroup? _selectedGroup;
 
     public MainForm()
     {
@@ -61,7 +62,7 @@ public sealed class MainForm : Form
         });
         heading.Controls.Add(new Label
         {
-            Text = "Conexão direta com as catracas Hikvision · sem HikCentral",
+            Text = "Selecione o bloco e depois a catraca que deseja abrir",
             AutoSize = true,
             ForeColor = Color.FromArgb(98, 108, 121),
             Location = new Point(3, 45)
@@ -88,7 +89,7 @@ public sealed class MainForm : Form
         _status = new Label
         {
             Text = _settings.ManagedGates.Count > 0
-                ? "Pronto para operar."
+                ? "Selecione um bloco."
                 : "Nenhuma catraca cadastrada. Entre em Administração para configurar os IPs.",
             Dock = DockStyle.Top,
             AutoSize = false,
@@ -124,14 +125,14 @@ public sealed class MainForm : Form
         footer.Controls.Add(logButton);
         footer.Controls.Add(new Label
         {
-            Text = "O computador fala diretamente com cada IP via ISAPI.",
+            Text = "Cada comando abre somente uma catraca.",
             AutoSize = true,
             ForeColor = Color.FromArgb(98, 108, 121),
             Padding = new Padding(12, 7, 0, 0)
         });
         root.Controls.Add(footer, 0, 3);
 
-        BuildGateCards();
+        BuildGroupCards();
         FormClosing += (_, _) => _operationCts?.Cancel();
     }
 
@@ -152,22 +153,21 @@ public sealed class MainForm : Form
         return button;
     }
 
-    private void BuildGateCards()
+    private void BuildGroupCards()
     {
+        _selectedGroup = null;
         _cards.SuspendLayout();
         _cards.Controls.Clear();
-        _gateButtons.Clear();
+        _actionButtons.Clear();
 
         foreach (var group in _settings.Groups)
         {
             var gates = _settings.ManagedGates
-                .Where(x => x.GroupName.Equals(group.Name, StringComparison.OrdinalIgnoreCase))
+                .Where(x =>
+                    x.Enabled &&
+                    x.GroupName.Equals(group.Name, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(x => x.Name)
                 .ToList();
-
-            var activeCount = gates.Count(x => x.Enabled);
-            var referenceText = gates.Count == 0
-                ? "Nenhuma catraca cadastrada"
-                : $"{activeCount} ativa(s) de {gates.Count} cadastrada(s)";
 
             var card = new Panel
             {
@@ -182,65 +182,164 @@ public sealed class MainForm : Form
                 Text = group.Name,
                 AutoSize = false,
                 Width = 400,
-                Height = 30,
+                Height = 32,
                 Location = new Point(20, 18),
-                Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold),
+                Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(55, 63, 74)
             });
 
             card.Controls.Add(new Label
             {
-                Text = referenceText,
+                Text = gates.Count == 0
+                    ? "Nenhuma catraca ativa cadastrada"
+                    : $"{gates.Count} catraca(s) disponível(is)",
                 AutoSize = false,
                 Width = 400,
                 Height = 24,
-                Location = new Point(20, 49),
+                Location = new Point(20, 52),
                 ForeColor = Color.FromArgb(105, 114, 126)
             });
 
             var button = new Button
             {
-                Text = string.IsNullOrWhiteSpace(group.ButtonText)
-                    ? "ABRIR " + group.Name
-                    : group.ButtonText,
+                Text = "SELECIONAR BLOCO",
                 Width = 400,
-                Height = 112,
-                Location = new Point(20, 82),
-                Font = new Font("Segoe UI Semibold", 17F, FontStyle.Bold),
+                Height = 105,
+                Location = new Point(20, 88),
+                Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(220, 52, 56),
+                BackColor = Color.FromArgb(47, 102, 176),
                 ForeColor = Color.White,
                 Cursor = Cursors.Hand,
-                Tag = group,
-                Enabled = activeCount > 0
+                Enabled = gates.Count > 0,
+                Tag = group
             };
             button.FlatAppearance.BorderSize = 0;
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(195, 40, 44);
-            button.Click += GateButton_Click;
+            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(38, 83, 145);
+            button.Click += (_, _) =>
+            {
+                if (button.Tag is GateGroup selected)
+                    BuildGateCards(selected);
+            };
 
             card.Controls.Add(button);
             _cards.Controls.Add(card);
-            _gateButtons.Add(button);
+            _actionButtons.Add(button);
         }
 
         _cards.ResumeLayout();
+        SetStatus("Selecione o bloco onde está a catraca.", null);
     }
 
-    private async void GateButton_Click(object? sender, EventArgs e)
+    private void BuildGateCards(GateGroup group)
     {
-        if (sender is not Button button || button.Tag is not GateGroup group) return;
+        _selectedGroup = group;
+        _cards.SuspendLayout();
+        _cards.Controls.Clear();
+        _actionButtons.Clear();
+
+        var top = new Panel
+        {
+            Width = 900,
+            Height = 70,
+            Margin = new Padding(0, 0, 18, 18),
+            BackColor = Color.Transparent
+        };
+
+        var back = new Button
+        {
+            Text = "← Voltar aos blocos",
+            Width = 170,
+            Height = 42,
+            Location = new Point(0, 6),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Cursor = Cursors.Hand
+        };
+        back.FlatAppearance.BorderColor = Color.FromArgb(205, 211, 220);
+        back.Click += (_, _) => BuildGroupCards();
+
+        top.Controls.Add(back);
+        top.Controls.Add(new Label
+        {
+            Text = group.Name,
+            AutoSize = true,
+            Location = new Point(192, 11),
+            Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(35, 42, 52)
+        });
+
+        _cards.Controls.Add(top);
+        _actionButtons.Add(back);
 
         var gates = _settings.ManagedGates
             .Where(x =>
                 x.Enabled &&
                 x.GroupName.Equals(group.Name, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Name)
             .ToList();
 
-        if (gates.Count == 0)
+        foreach (var gate in gates)
         {
-            SetStatus($"Nenhuma catraca ativa cadastrada em {group.Name}.", false);
-            return;
+            var card = new Panel
+            {
+                Width = 440,
+                Height = 225,
+                Margin = new Padding(0, 0, 18, 18),
+                BackColor = Color.White
+            };
+
+            card.Controls.Add(new Label
+            {
+                Text = gate.Name,
+                AutoSize = false,
+                Width = 400,
+                Height = 32,
+                Location = new Point(20, 18),
+                Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(55, 63, 74)
+            });
+
+            card.Controls.Add(new Label
+            {
+                Text = $"{gate.Host}:{gate.Port}  ·  Door {gate.DoorNo}",
+                AutoSize = false,
+                Width = 400,
+                Height = 24,
+                Location = new Point(20, 52),
+                ForeColor = Color.FromArgb(105, 114, 126)
+            });
+
+            var open = new Button
+            {
+                Text = "ABRIR ESTA CATRACA",
+                Width = 400,
+                Height = 116,
+                Location = new Point(20, 88),
+                Font = new Font("Segoe UI Semibold", 17F, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(220, 52, 56),
+                ForeColor = Color.White,
+                Cursor = Cursors.Hand,
+                Tag = gate
+            };
+            open.FlatAppearance.BorderSize = 0;
+            open.FlatAppearance.MouseOverBackColor = Color.FromArgb(195, 40, 44);
+            open.Click += GateButton_Click;
+
+            card.Controls.Add(open);
+            _cards.Controls.Add(card);
+            _actionButtons.Add(open);
         }
+
+        _cards.ResumeLayout();
+        SetStatus($"{group.Name}: escolha qual catraca deseja abrir.", null);
+    }
+
+    private async void GateButton_Click(object? sender, EventArgs e)
+    {
+        if (sender is not Button button || button.Tag is not ManagedGate gate)
+            return;
 
         SetBusy(true);
         _operationCts?.Dispose();
@@ -248,50 +347,35 @@ public sealed class MainForm : Form
 
         try
         {
-            SetStatus($"Abrindo {gates.Count} catraca(s) diretamente em {group.Name}...", null);
+            SetStatus($"Abrindo somente {gate.Name} ({gate.Host})...", null);
 
-            var tasks = gates.Select(async gate =>
+            using var client = new DirectIsapiClient(gate);
+            var result = await client.OpenAsync(_operationCts.Token);
+
+            SettingsService.Log(
+                $"DIRECT OPEN {(result.Success ? "OK" : "FAIL")} group={gate.GroupName} gate={result.GateName} host={result.Host} detail={result.Description}");
+
+            if (result.Success)
             {
-                using var client = new DirectIsapiClient(gate);
-                return await client.OpenAsync(_operationCts.Token);
-            });
-
-            var results = await Task.WhenAll(tasks);
-            var failures = results.Where(x => !x.Success).ToList();
-
-            foreach (var result in results)
-            {
-                SettingsService.Log(
-                    $"DIRECT OPEN {(result.Success ? "OK" : "FAIL")} group={group.Name} gate={result.GateName} host={result.Host} detail={result.Description}");
-            }
-
-            if (failures.Count == 0)
-            {
-                SetStatus($"ABERTURA ENVIADA: {group.Name} — {results.Length} catraca(s).", true);
+                SetStatus($"ABERTURA ENVIADA: {gate.Name} ({gate.Host}).", true);
                 System.Media.SystemSounds.Asterisk.Play();
             }
             else
             {
-                var detail = string.Join(
-                    " | ",
-                    failures.Select(x => $"{x.GateName} ({x.Host}): {x.Description}"));
-
-                SetStatus(
-                    $"{results.Length - failures.Count}/{results.Length} abriram. Falhas: {detail}",
-                    false);
-
+                SetStatus($"{gate.Name} ({gate.Host}): {result.Description}", false);
                 System.Media.SystemSounds.Exclamation.Play();
             }
         }
         catch (OperationCanceledException)
         {
-            SetStatus("Operação cancelada ou tempo esgotado.", false);
-            SettingsService.Log($"DIRECT OPEN TIMEOUT group={group.Name}");
+            SetStatus($"Tempo esgotado ao abrir {gate.Name}.", false);
+            SettingsService.Log($"DIRECT OPEN TIMEOUT group={gate.GroupName} gate={gate.Name} host={gate.Host}");
         }
         catch (Exception ex)
         {
             SetStatus(ex.Message, false);
-            SettingsService.Log($"DIRECT OPEN ERROR group={group.Name} error={ex.Message}");
+            SettingsService.Log(
+                $"DIRECT OPEN ERROR group={gate.GroupName} gate={gate.Name} host={gate.Host} error={ex.Message}");
             System.Media.SystemSounds.Hand.Play();
         }
         finally
@@ -303,13 +387,25 @@ public sealed class MainForm : Form
     private void OpenAdministration()
     {
         using var login = new AdminLoginForm(_settings);
-        if (login.ShowDialog(this) != DialogResult.OK) return;
+        if (login.ShowDialog(this) != DialogResult.OK)
+            return;
 
         using var admin = new AdminForm(_settings);
         admin.ShowDialog(this);
 
         _settings = SettingsService.Load();
-        BuildGateCards();
+
+        if (_selectedGroup is not null &&
+            _settings.Groups.FirstOrDefault(x =>
+                x.Name.Equals(_selectedGroup.Name, StringComparison.OrdinalIgnoreCase)) is { } currentGroup)
+        {
+            BuildGateCards(currentGroup);
+        }
+        else
+        {
+            BuildGroupCards();
+        }
+
         SetStatus("Cadastro administrativo atualizado.", true);
     }
 
@@ -319,9 +415,11 @@ public sealed class MainForm : Form
         {
             Directory.CreateDirectory(SettingsService.DataDirectory);
             if (!File.Exists(SettingsService.LogPath))
+            {
                 File.WriteAllText(
                     SettingsService.LogPath,
                     "Log de operações - Hikvision Abrir Catraca" + Environment.NewLine);
+            }
 
             Process.Start(new ProcessStartInfo
             {
@@ -337,16 +435,8 @@ public sealed class MainForm : Form
 
     private void SetBusy(bool busy)
     {
-        foreach (var button in _gateButtons)
-        {
-            if (button.Tag is GateGroup group)
-            {
-                var hasActive = _settings.ManagedGates.Any(x =>
-                    x.Enabled &&
-                    x.GroupName.Equals(group.Name, StringComparison.OrdinalIgnoreCase));
-                button.Enabled = !busy && hasActive;
-            }
-        }
+        foreach (var button in _actionButtons)
+            button.Enabled = !busy;
 
         _adminButton.Enabled = !busy;
         UseWaitCursor = busy;
