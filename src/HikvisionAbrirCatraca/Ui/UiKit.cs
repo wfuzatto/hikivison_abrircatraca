@@ -56,6 +56,13 @@ internal sealed class CardPanel : Panel
 
     public CardPanel()
     {
+        SetStyle(
+            ControlStyles.UserPaint |
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.SupportsTransparentBackColor,
+            true);
+
         DoubleBuffered = true;
         BackColor = Color.Transparent;
         Resize += (_, _) => UpdateRegion();
@@ -240,6 +247,13 @@ internal sealed class TurnstileIcon : Control
 
     public TurnstileIcon()
     {
+        SetStyle(
+            ControlStyles.UserPaint |
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.SupportsTransparentBackColor,
+            true);
+
         DoubleBuffered = true;
         BackColor = Color.Transparent;
         Size = new Size(92, 92);
@@ -349,6 +363,13 @@ internal sealed class StatusBanner : Control
 
     public StatusBanner()
     {
+        SetStyle(
+            ControlStyles.UserPaint |
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.SupportsTransparentBackColor,
+            true);
+
         DoubleBuffered = true;
         Height = 58;
         BackColor = Color.Transparent;
@@ -421,6 +442,13 @@ internal sealed class InfoIcon : Control
 {
     public InfoIcon()
     {
+        SetStyle(
+            ControlStyles.UserPaint |
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.SupportsTransparentBackColor,
+            true);
+
         DoubleBuffered = true;
         Size = new Size(24, 24);
         BackColor = Color.Transparent;
