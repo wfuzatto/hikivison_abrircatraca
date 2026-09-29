@@ -125,7 +125,7 @@ public sealed class MainForm : Form
         footer.Controls.Add(logButton);
         footer.Controls.Add(new Label
         {
-            Text = "Cada comando abre somente uma catraca.",
+            Text = "Abra uma catraca individualmente ou use ABRIR TODAS dentro do bloco selecionado.",
             AutoSize = true,
             ForeColor = Color.FromArgb(98, 108, 121),
             Padding = new Padding(12, 7, 0, 0)
@@ -269,15 +269,35 @@ public sealed class MainForm : Form
             ForeColor = Color.FromArgb(35, 42, 52)
         });
 
-        _cards.Controls.Add(top);
-        _actionButtons.Add(back);
-
         var gates = _settings.ManagedGates
             .Where(x =>
                 x.Enabled &&
                 x.GroupName.Equals(group.Name, StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x.Name)
             .ToList();
+
+        var openAll = new Button
+        {
+            Text = "ABRIR TODAS",
+            Width = 170,
+            Height = 42,
+            Location = new Point(710, 6),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(220, 52, 56),
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 10.5F, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            Enabled = gates.Count > 0,
+            Tag = group
+        };
+        openAll.FlatAppearance.BorderSize = 0;
+        openAll.FlatAppearance.MouseOverBackColor = Color.FromArgb(195, 40, 44);
+        openAll.Click += async (_, _) => await OpenAllGroupAsync(group);
+
+        top.Controls.Add(openAll);
+        _cards.Controls.Add(top);
+        _actionButtons.Add(back);
+        _actionButtons.Add(openAll);
 
         foreach (var gate in gates)
         {
@@ -334,6 +354,91 @@ public sealed class MainForm : Form
 
         _cards.ResumeLayout();
         SetStatus($"{group.Name}: escolha qual catraca deseja abrir.", null);
+    }
+
+    private async Task OpenAllGroupAsync(GateGroup group)
+    {
+        var gates = _settings.ManagedGates
+            .Where(x =>
+                x.Enabled &&
+                x.GroupName.Equals(group.Name, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Name)
+            .ToList();
+
+        if (gates.Count == 0)
+        {
+            SetStatus($"Nenhuma catraca ativa cadastrada em {group.Name}.", false);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            this,
+            $"Abrir TODAS as {gates.Count} catraca(s) de {group.Name}?\n\n" +
+            string.Join("\n", gates.Select(x => $"• {x.Name} ({x.Host})")),
+            "Confirmar abertura de todas",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+
+        if (confirm != DialogResult.Yes)
+            return;
+
+        SetBusy(true);
+        _operationCts?.Dispose();
+        _operationCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        try
+        {
+            SetStatus($"Abrindo todas as {gates.Count} catraca(s) de {group.Name}...", null);
+
+            var tasks = gates.Select(async gate =>
+            {
+                using var client = new DirectIsapiClient(gate);
+                return await client.OpenAsync(_operationCts.Token);
+            });
+
+            var results = await Task.WhenAll(tasks);
+            var failures = results.Where(x => !x.Success).ToList();
+
+            foreach (var result in results)
+            {
+                SettingsService.Log(
+                    $"DIRECT OPEN ALL {(result.Success ? "OK" : "FAIL")} group={group.Name} gate={result.GateName} host={result.Host} detail={result.Description}");
+            }
+
+            if (failures.Count == 0)
+            {
+                SetStatus($"TODAS ABERTAS: {group.Name} — {results.Length} catraca(s).", true);
+                System.Media.SystemSounds.Asterisk.Play();
+            }
+            else
+            {
+                var detail = string.Join(
+                    " | ",
+                    failures.Select(x => $"{x.GateName} ({x.Host}): {x.Description}"));
+
+                SetStatus(
+                    $"{results.Length - failures.Count}/{results.Length} abriram em {group.Name}. Falhas: {detail}",
+                    false);
+
+                System.Media.SystemSounds.Exclamation.Play();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            SetStatus($"Tempo esgotado ao abrir todas de {group.Name}.", false);
+            SettingsService.Log($"DIRECT OPEN ALL TIMEOUT group={group.Name}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(ex.Message, false);
+            SettingsService.Log($"DIRECT OPEN ALL ERROR group={group.Name} error={ex.Message}");
+            System.Media.SystemSounds.Hand.Play();
+        }
+        finally
+        {
+            SetBusy(false);
+        }
     }
 
     private async void GateButton_Click(object? sender, EventArgs e)
