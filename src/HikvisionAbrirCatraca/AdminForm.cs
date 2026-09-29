@@ -68,6 +68,7 @@ public sealed class AdminForm : Form
         actions.Controls.Add(MakeButton("Testar conexão", async (_, _) => await TestConnectionAsync()));
         actions.Controls.Add(MakeButton("Testar abertura", async (_, _) => await TestOpeningAsync()));
         actions.Controls.Add(MakeButton("Testar todas", async (_, _) => await TestAllAsync()));
+        actions.Controls.Add(MakeButton("Abrir log", (_, _) => OpenLog()));
         actions.Controls.Add(MakeButton("Alterar senha admin", (_, _) => ChangePassword()));
         root.Controls.Add(actions, 0, 1);
 
@@ -372,6 +373,30 @@ public sealed class AdminForm : Form
         {
             SetStatus($"{results.Length - failed.Count}/{results.Length} responderam. Falhas: " +
                       string.Join(" | ", failed.Select(x => $"{x.gate.Name}: {x.detail}")), false);
+        }
+    }
+
+    private void OpenLog()
+    {
+        try
+        {
+            Directory.CreateDirectory(SettingsService.DataDirectory);
+            if (!File.Exists(SettingsService.LogPath))
+            {
+                File.WriteAllText(
+                    SettingsService.LogPath,
+                    "Log de operações - Hikvision Abrir Catraca" + Environment.NewLine);
+            }
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = SettingsService.LogPath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Não foi possível abrir o log: " + ex.Message, false);
         }
     }
 
