@@ -113,7 +113,9 @@ public sealed class MainForm : Form
 
         _adminButton = new RoundedButton
         {
-            Text = "🔒  Administração",
+            Text = "Administração",
+            Glyph = ButtonGlyph.Lock,
+            GlyphLeft = 18,
             Width = 172,
             Height = 48,
             CornerRadius = 11,
@@ -150,9 +152,9 @@ public sealed class MainForm : Form
         };
 
         var info = new InfoIcon { Location = new Point(3, 8) };
-        var note = new Label
+        var note1 = new Label
         {
-            Text = "Abra uma catraca individualmente ou use ABRIR TODAS dentro do bloco selecionado.",
+            Text = "Abra uma catraca individualmente ou use ",
             AutoSize = true,
             Font = AppTheme.Font(9.6F),
             ForeColor = AppTheme.Muted,
@@ -160,27 +162,35 @@ public sealed class MainForm : Form
             BackColor = Color.Transparent
         };
 
-        var logButton = new LinkLabel
+        var note2 = new Label
         {
-            Text = "Abrir log",
+            Text = "ABRIR TODAS",
             AutoSize = true,
-            Font = AppTheme.SemiBold(9.3F),
-            LinkColor = AppTheme.Muted,
-            ActiveLinkColor = AppTheme.Navy,
-            VisitedLinkColor = AppTheme.Muted,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right,
-            Location = new Point(870, 10)
+            Font = AppTheme.SemiBold(9.6F),
+            ForeColor = AppTheme.Navy,
+            BackColor = Color.Transparent
         };
-        logButton.LinkClicked += (_, _) => OpenLog();
 
-        footer.Resize += (_, _) =>
+        var note3 = new Label
         {
-            logButton.Left = Math.Max(760, footer.ClientSize.Width - logButton.Width - 2);
+            Text = " dentro do bloco selecionado.",
+            AutoSize = true,
+            Font = AppTheme.Font(9.6F),
+            ForeColor = AppTheme.Muted,
+            BackColor = Color.Transparent
         };
 
         footer.Controls.Add(info);
-        footer.Controls.Add(note);
-        footer.Controls.Add(logButton);
+        footer.Controls.Add(note1);
+        footer.Controls.Add(note2);
+        footer.Controls.Add(note3);
+
+        footer.Layout += (_, _) =>
+        {
+            note2.Location = new Point(note1.Right + 1, 10);
+            note3.Location = new Point(note2.Right + 1, 10);
+        };
+
         return footer;
     }
 
@@ -270,7 +280,9 @@ public sealed class MainForm : Form
 
         var select = new RoundedButton
         {
-            Text = "›   SELECIONAR BLOCO",
+            Text = "SELECIONAR BLOCO",
+            Glyph = ButtonGlyph.ChevronRight,
+            GlyphLeft = 112,
             Width = 412,
             Height = 56,
             Location = new Point(20, 145),
@@ -330,7 +342,9 @@ public sealed class MainForm : Form
 
         var back = new RoundedButton
         {
-            Text = "←  Voltar aos blocos",
+            Text = "Voltar aos blocos",
+            Glyph = ButtonGlyph.Back,
+            GlyphLeft = 18,
             Width = 165,
             Height = 43,
             Location = new Point(0, 9),
@@ -359,7 +373,9 @@ public sealed class MainForm : Form
 
         var openAll = new RoundedButton
         {
-            Text = "▣  ABRIR TODAS",
+            Text = "ABRIR TODAS",
+            Glyph = ButtonGlyph.Grid,
+            GlyphLeft = 23,
             Width = 168,
             Height = 50,
             Location = new Point(750, 5),
@@ -426,7 +442,9 @@ public sealed class MainForm : Form
 
         var open = new RoundedButton
         {
-            Text = "⌑   ABRIR ESTA CATRACA",
+            Text = "ABRIR ESTA CATRACA",
+            Glyph = ButtonGlyph.Unlock,
+            GlyphLeft = 110,
             Width = 414,
             Height = 64,
             Location = new Point(20, 116),
