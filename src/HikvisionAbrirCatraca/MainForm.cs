@@ -11,7 +11,7 @@ public sealed class MainForm : Form
     private AppSettings _settings;
     private readonly StatusBanner _status;
     private readonly FlowLayoutPanel _cards;
-    private readonly RoundedButton _adminButton;
+    private RoundedButton _adminButton = null!;
     private readonly List<Button> _actionButtons = [];
     private CancellationTokenSource? _operationCts;
     private GateGroup? _selectedGroup;
