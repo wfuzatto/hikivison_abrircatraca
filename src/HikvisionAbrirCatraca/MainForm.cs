@@ -2,15 +2,16 @@ using System.Diagnostics;
 using System.Drawing;
 using HikvisionAbrirCatraca.Models;
 using HikvisionAbrirCatraca.Services;
+using HikvisionAbrirCatraca.Ui;
 
 namespace HikvisionAbrirCatraca;
 
 public sealed class MainForm : Form
 {
     private AppSettings _settings;
-    private readonly Label _status;
+    private readonly StatusBanner _status;
     private readonly FlowLayoutPanel _cards;
-    private readonly Button _adminButton;
+    private readonly RoundedButton _adminButton;
     private readonly List<Button> _actionButtons = [];
     private CancellationTokenSource? _operationCts;
     private GateGroup? _selectedGroup;
@@ -21,58 +22,28 @@ public sealed class MainForm : Form
 
         Text = "AcquaVale - Abrir Catracas";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(860, 620);
-        Size = new Size(1000, 700);
-        BackColor = Color.FromArgb(245, 247, 250);
-        Font = new Font("Segoe UI", 10F);
+        MinimumSize = new Size(980, 700);
+        ClientSize = new Size(1010, 760);
+        BackColor = AppTheme.Background;
+        Font = AppTheme.Font(10F);
         AutoScaleMode = AutoScaleMode.Dpi;
+        DoubleBuffered = true;
 
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 4,
-            Padding = new Padding(24),
-            BackColor = BackColor
+            Padding = new Padding(24, 22, 24, 18),
+            BackColor = AppTheme.Background
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         Controls.Add(root);
 
-        var header = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            Margin = new Padding(0, 0, 0, 18)
-        };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        var heading = new Panel { Dock = DockStyle.Fill, AutoSize = true };
-        heading.Controls.Add(new Label
-        {
-            Text = "ABERTURA DE CATRACAS",
-            AutoSize = true,
-            Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold),
-            ForeColor = Color.FromArgb(35, 42, 52),
-            Location = new Point(0, 0)
-        });
-        heading.Controls.Add(new Label
-        {
-            Text = "Selecione o bloco e depois a catraca que deseja abrir",
-            AutoSize = true,
-            ForeColor = Color.FromArgb(98, 108, 121),
-            Location = new Point(3, 45)
-        });
-
-        _adminButton = HeaderButton("🔒 Administração");
-        _adminButton.Click += (_, _) => OpenAdministration();
-
-        header.Controls.Add(heading, 0, 0);
-        header.Controls.Add(_adminButton, 1, 0);
+        var header = BuildHeader();
         root.Controls.Add(header, 0, 0);
 
         _cards = new FlowLayoutPanel
@@ -81,76 +52,136 @@ public sealed class MainForm : Form
             AutoScroll = true,
             WrapContents = true,
             FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(0),
-            Margin = new Padding(0)
+            Padding = new Padding(0, 4, 0, 0),
+            Margin = new Padding(0),
+            BackColor = AppTheme.Background
         };
         root.Controls.Add(_cards, 0, 1);
 
-        _status = new Label
+        _status = new StatusBanner
         {
-            Text = _settings.ManagedGates.Count > 0
-                ? "Selecione um bloco."
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 9, 0, 5),
+            Message = _settings.ManagedGates.Count > 0
+                ? "Selecione o bloco."
                 : "Nenhuma catraca cadastrada. Entre em Administração para configurar os IPs.",
-            Dock = DockStyle.Top,
-            AutoSize = false,
-            Height = 46,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(14, 0, 14, 0),
-            Font = new Font("Segoe UI Semibold", 10.5F),
-            BackColor = Color.White,
-            ForeColor = _settings.ManagedGates.Count > 0
-                ? Color.FromArgb(34, 94, 58)
-                : Color.FromArgb(156, 97, 20),
-            Margin = new Padding(0, 16, 0, 10)
+            Success = _settings.ManagedGates.Count > 0 ? null : false
         };
         root.Controls.Add(_status, 0, 2);
 
-        var footer = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
-        };
-
-        var logButton = new Button
-        {
-            Text = "Abrir log",
-            AutoSize = true,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White
-        };
-        logButton.Click += (_, _) => OpenLog();
-
-        footer.Controls.Add(logButton);
-        footer.Controls.Add(new Label
-        {
-            Text = "Abra uma catraca individualmente ou use ABRIR TODAS dentro do bloco selecionado.",
-            AutoSize = true,
-            ForeColor = Color.FromArgb(98, 108, 121),
-            Padding = new Padding(12, 7, 0, 0)
-        });
-        root.Controls.Add(footer, 0, 3);
+        root.Controls.Add(BuildFooter(), 0, 3);
 
         BuildGroupCards();
         FormClosing += (_, _) => _operationCts?.Cancel();
     }
 
-    private Button HeaderButton(string text)
+    private Control BuildHeader()
     {
-        var button = new Button
+        var header = new Panel
         {
-            Text = text,
-            AutoSize = true,
-            Height = 42,
-            Padding = new Padding(12, 0, 12, 0),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Cursor = Cursors.Hand,
-            Margin = new Padding(8, 0, 0, 0)
+            Dock = DockStyle.Fill,
+            BackColor = AppTheme.Background,
+            Margin = new Padding(0)
         };
-        button.FlatAppearance.BorderColor = Color.FromArgb(210, 215, 223);
-        return button;
+
+        var icon = new TurnstileIcon
+        {
+            Variant = TurnstileIconVariant.Header,
+            Location = new Point(0, 7),
+            Size = new Size(74, 68)
+        };
+
+        var title = new Label
+        {
+            Text = "ABERTURA DE CATRACAS",
+            AutoSize = true,
+            Font = AppTheme.SemiBold(23F),
+            ForeColor = AppTheme.Navy,
+            Location = new Point(86, 11),
+            BackColor = Color.Transparent
+        };
+
+        var subtitle = new Label
+        {
+            Text = "Selecione o bloco e depois a catraca que deseja abrir",
+            AutoSize = true,
+            Font = AppTheme.Font(11.5F),
+            ForeColor = AppTheme.Muted,
+            Location = new Point(88, 53),
+            BackColor = Color.Transparent
+        };
+
+        _adminButton = new RoundedButton
+        {
+            Text = "🔒  Administração",
+            Width = 172,
+            Height = 48,
+            CornerRadius = 11,
+            FillColor = Color.FromArgb(239, 245, 252),
+            HoverColor = Color.FromArgb(226, 237, 249),
+            ForeColor = AppTheme.Navy,
+            BorderColor = Color.FromArgb(203, 218, 236),
+            BorderSize = 1,
+            Font = AppTheme.SemiBold(10.5F),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Location = new Point(ClientSize.Width - 24 - 172 - 24, 13)
+        };
+        _adminButton.Click += (_, _) => OpenAdministration();
+
+        header.Resize += (_, _) =>
+        {
+            _adminButton.Left = Math.Max(650, header.ClientSize.Width - _adminButton.Width);
+        };
+
+        header.Controls.Add(icon);
+        header.Controls.Add(title);
+        header.Controls.Add(subtitle);
+        header.Controls.Add(_adminButton);
+        return header;
+    }
+
+    private Control BuildFooter()
+    {
+        var footer = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = AppTheme.Background,
+            Margin = new Padding(0)
+        };
+
+        var info = new InfoIcon { Location = new Point(3, 8) };
+        var note = new Label
+        {
+            Text = "Abra uma catraca individualmente ou use ABRIR TODAS dentro do bloco selecionado.",
+            AutoSize = true,
+            Font = AppTheme.Font(9.6F),
+            ForeColor = AppTheme.Muted,
+            Location = new Point(38, 10),
+            BackColor = Color.Transparent
+        };
+
+        var logButton = new LinkLabel
+        {
+            Text = "Abrir log",
+            AutoSize = true,
+            Font = AppTheme.SemiBold(9.3F),
+            LinkColor = AppTheme.Muted,
+            ActiveLinkColor = AppTheme.Navy,
+            VisitedLinkColor = AppTheme.Muted,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Location = new Point(870, 10)
+        };
+        logButton.LinkClicked += (_, _) => OpenLog();
+
+        footer.Resize += (_, _) =>
+        {
+            logButton.Left = Math.Max(760, footer.ClientSize.Width - logButton.Width - 2);
+        };
+
+        footer.Controls.Add(info);
+        footer.Controls.Add(note);
+        footer.Controls.Add(logButton);
+        return footer;
     }
 
     private void BuildGroupCards()
@@ -169,66 +200,99 @@ public sealed class MainForm : Form
                 .OrderBy(x => x.Name)
                 .ToList();
 
-            var card = new Panel
-            {
-                Width = 440,
-                Height = 215,
-                Margin = new Padding(0, 0, 18, 18),
-                BackColor = Color.White
-            };
-
-            card.Controls.Add(new Label
-            {
-                Text = group.Name,
-                AutoSize = false,
-                Width = 400,
-                Height = 32,
-                Location = new Point(20, 18),
-                Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(55, 63, 74)
-            });
-
-            card.Controls.Add(new Label
-            {
-                Text = gates.Count == 0
-                    ? "Nenhuma catraca ativa cadastrada"
-                    : $"{gates.Count} catraca(s) disponível(is)",
-                AutoSize = false,
-                Width = 400,
-                Height = 24,
-                Location = new Point(20, 52),
-                ForeColor = Color.FromArgb(105, 114, 126)
-            });
-
-            var button = new Button
-            {
-                Text = "SELECIONAR BLOCO",
-                Width = 400,
-                Height = 105,
-                Location = new Point(20, 88),
-                Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(47, 102, 176),
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand,
-                Enabled = gates.Count > 0,
-                Tag = group
-            };
-            button.FlatAppearance.BorderSize = 0;
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(38, 83, 145);
-            button.Click += (_, _) =>
-            {
-                if (button.Tag is GateGroup selected)
-                    BuildGateCards(selected);
-            };
-
-            card.Controls.Add(button);
-            _cards.Controls.Add(card);
-            _actionButtons.Add(button);
+            _cards.Controls.Add(BuildGroupCard(group, gates.Count));
         }
 
         _cards.ResumeLayout();
-        SetStatus("Selecione o bloco onde está a catraca.", null);
+        SetStatus("Selecione o bloco.", null);
+    }
+
+    private Control BuildGroupCard(GateGroup group, int available)
+    {
+        var card = new CardPanel
+        {
+            Width = 456,
+            Height = 224,
+            Margin = new Padding(0, 0, 16, 16),
+            CornerRadius = 17
+        };
+
+        var variant = group.Name switch
+        {
+            "ENTRADA ACQUAVALE" => TurnstileIconVariant.Entry,
+            "SAIDA ACQUAVALE" => TurnstileIconVariant.Exit,
+            "LOJA ACQUAVALE" => TurnstileIconVariant.Shop,
+            _ => TurnstileIconVariant.Generic
+        };
+
+        card.Controls.Add(new TurnstileIcon
+        {
+            Variant = variant,
+            Location = new Point(20, 22),
+            Size = new Size(100, 100)
+        });
+
+        card.Controls.Add(new Label
+        {
+            Text = group.Name,
+            AutoSize = false,
+            Width = 300,
+            Height = 31,
+            Location = new Point(140, 31),
+            Font = AppTheme.SemiBold(13.2F),
+            ForeColor = AppTheme.Navy,
+            BackColor = Color.Transparent,
+            TextAlign = ContentAlignment.MiddleLeft
+        });
+
+        var count = new Label
+        {
+            Text = available.ToString(),
+            AutoSize = true,
+            Location = new Point(140, 73),
+            Font = AppTheme.SemiBold(16F),
+            ForeColor = available > 0 ? AppTheme.Green : Color.FromArgb(171, 80, 80),
+            BackColor = Color.Transparent
+        };
+
+        var availability = new Label
+        {
+            Text = available > 0 ? "catraca(s) disponível(is)" : "nenhuma catraca disponível",
+            AutoSize = true,
+            Location = new Point(164, 78),
+            Font = AppTheme.Font(10.8F),
+            ForeColor = AppTheme.Muted,
+            BackColor = Color.Transparent
+        };
+
+        if (available == 0)
+            availability.Left = 140;
+
+        var select = new RoundedButton
+        {
+            Text = "›   SELECIONAR BLOCO",
+            Width = 412,
+            Height = 56,
+            Location = new Point(20, 145),
+            CornerRadius = 9,
+            FillColor = AppTheme.Blue,
+            HoverColor = AppTheme.BlueHover,
+            Font = AppTheme.SemiBold(11.2F),
+            Enabled = available > 0,
+            Tag = group
+        };
+        select.Click += (_, _) =>
+        {
+            if (select.Tag is GateGroup selected)
+                BuildGateCards(selected);
+        };
+
+        card.Controls.Add(count);
+        card.Controls.Add(availability);
+        card.Controls.Add(select);
+        _actionButtons.Add(select);
+
+        return card;
     }
 
     private void BuildGateCards(GateGroup group)
@@ -238,37 +302,6 @@ public sealed class MainForm : Form
         _cards.Controls.Clear();
         _actionButtons.Clear();
 
-        var top = new Panel
-        {
-            Width = 900,
-            Height = 70,
-            Margin = new Padding(0, 0, 18, 18),
-            BackColor = Color.Transparent
-        };
-
-        var back = new Button
-        {
-            Text = "← Voltar aos blocos",
-            Width = 170,
-            Height = 42,
-            Location = new Point(0, 6),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            Cursor = Cursors.Hand
-        };
-        back.FlatAppearance.BorderColor = Color.FromArgb(205, 211, 220);
-        back.Click += (_, _) => BuildGroupCards();
-
-        top.Controls.Add(back);
-        top.Controls.Add(new Label
-        {
-            Text = group.Name,
-            AutoSize = true,
-            Location = new Point(192, 11),
-            Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold),
-            ForeColor = Color.FromArgb(35, 42, 52)
-        });
-
         var gates = _settings.ManagedGates
             .Where(x =>
                 x.Enabled &&
@@ -276,84 +309,138 @@ public sealed class MainForm : Form
             .OrderBy(x => x.Name)
             .ToList();
 
-        var openAll = new Button
+        _cards.Controls.Add(BuildGroupTopBar(group, gates));
+
+        foreach (var gate in gates)
+            _cards.Controls.Add(BuildGateCard(gate));
+
+        _cards.ResumeLayout();
+        SetStatus($"{group.Name}: escolha qual catraca deseja abrir.", true);
+    }
+
+    private Control BuildGroupTopBar(GateGroup group, IReadOnlyList<ManagedGate> gates)
+    {
+        var top = new Panel
         {
-            Text = "ABRIR TODAS",
-            Width = 170,
-            Height = 42,
-            Location = new Point(710, 6),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(220, 52, 56),
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 10.5F, FontStyle.Bold),
-            Cursor = Cursors.Hand,
+            Width = 930,
+            Height = 72,
+            Margin = new Padding(0, 0, 16, 14),
+            BackColor = AppTheme.Background
+        };
+
+        var back = new RoundedButton
+        {
+            Text = "←  Voltar aos blocos",
+            Width = 165,
+            Height = 43,
+            Location = new Point(0, 9),
+            CornerRadius = 9,
+            FillColor = Color.White,
+            HoverColor = Color.FromArgb(242, 246, 251),
+            ForeColor = AppTheme.Navy,
+            BorderColor = Color.FromArgb(203, 215, 229),
+            BorderSize = 1,
+            Font = AppTheme.SemiBold(9.6F)
+        };
+        back.Click += (_, _) => BuildGroupCards();
+
+        var title = new Label
+        {
+            Text = group.Name,
+            AutoSize = false,
+            Width = 450,
+            Height = 44,
+            Location = new Point(190, 9),
+            Font = AppTheme.SemiBold(18F),
+            ForeColor = AppTheme.Navy,
+            BackColor = Color.Transparent,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        var openAll = new RoundedButton
+        {
+            Text = "▣  ABRIR TODAS",
+            Width = 168,
+            Height = 50,
+            Location = new Point(750, 5),
+            CornerRadius = 10,
+            FillColor = AppTheme.Red,
+            HoverColor = AppTheme.RedHover,
+            Font = AppTheme.SemiBold(10.5F),
             Enabled = gates.Count > 0,
             Tag = group
         };
-        openAll.FlatAppearance.BorderSize = 0;
-        openAll.FlatAppearance.MouseOverBackColor = Color.FromArgb(195, 40, 44);
         openAll.Click += async (_, _) => await OpenAllGroupAsync(group);
 
+        top.Controls.Add(back);
+        top.Controls.Add(title);
         top.Controls.Add(openAll);
-        _cards.Controls.Add(top);
+
         _actionButtons.Add(back);
         _actionButtons.Add(openAll);
+        return top;
+    }
 
-        foreach (var gate in gates)
+    private Control BuildGateCard(ManagedGate gate)
+    {
+        var card = new CardPanel
         {
-            var card = new Panel
-            {
-                Width = 440,
-                Height = 225,
-                Margin = new Padding(0, 0, 18, 18),
-                BackColor = Color.White
-            };
+            Width = 456,
+            Height = 205,
+            Margin = new Padding(0, 0, 16, 16),
+            CornerRadius = 17
+        };
 
-            card.Controls.Add(new Label
-            {
-                Text = gate.Name,
-                AutoSize = false,
-                Width = 400,
-                Height = 32,
-                Location = new Point(20, 18),
-                Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(55, 63, 74)
-            });
+        card.Controls.Add(new TurnstileIcon
+        {
+            Variant = TurnstileIconVariant.Generic,
+            Location = new Point(20, 20),
+            Size = new Size(72, 72)
+        });
 
-            card.Controls.Add(new Label
-            {
-                Text = $"{gate.Host}:{gate.Port}  ·  Door {gate.DoorNo}",
-                AutoSize = false,
-                Width = 400,
-                Height = 24,
-                Location = new Point(20, 52),
-                ForeColor = Color.FromArgb(105, 114, 126)
-            });
+        card.Controls.Add(new Label
+        {
+            Text = gate.Name,
+            AutoSize = false,
+            Width = 330,
+            Height = 30,
+            Location = new Point(106, 24),
+            Font = AppTheme.SemiBold(12F),
+            ForeColor = AppTheme.Navy,
+            BackColor = Color.Transparent,
+            TextAlign = ContentAlignment.MiddleLeft
+        });
 
-            var open = new Button
-            {
-                Text = "ABRIR ESTA CATRACA",
-                Width = 400,
-                Height = 116,
-                Location = new Point(20, 88),
-                Font = new Font("Segoe UI Semibold", 17F, FontStyle.Bold),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(220, 52, 56),
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand,
-                Tag = gate
-            };
-            open.FlatAppearance.BorderSize = 0;
-            open.FlatAppearance.MouseOverBackColor = Color.FromArgb(195, 40, 44);
-            open.Click += GateButton_Click;
+        card.Controls.Add(new Label
+        {
+            Text = $"{gate.Host}:{gate.Port}  ·  Door {gate.DoorNo}",
+            AutoSize = false,
+            Width = 330,
+            Height = 26,
+            Location = new Point(106, 55),
+            Font = AppTheme.Font(9.7F),
+            ForeColor = AppTheme.Muted,
+            BackColor = Color.Transparent,
+            TextAlign = ContentAlignment.MiddleLeft
+        });
 
-            card.Controls.Add(open);
-            _cards.Controls.Add(card);
-            _actionButtons.Add(open);
-        }
+        var open = new RoundedButton
+        {
+            Text = "⌑   ABRIR ESTA CATRACA",
+            Width = 414,
+            Height = 64,
+            Location = new Point(20, 116),
+            CornerRadius = 9,
+            FillColor = AppTheme.Red,
+            HoverColor = AppTheme.RedHover,
+            Font = AppTheme.SemiBold(11.3F),
+            Tag = gate
+        };
+        open.Click += GateButton_Click;
 
-        _cards.ResumeLayout();
-        SetStatus($"{group.Name}: escolha qual catraca deseja abrir.", null);
+        card.Controls.Add(open);
+        _actionButtons.Add(open);
+        return card;
     }
 
     private async Task OpenAllGroupAsync(GateGroup group)
@@ -549,18 +636,7 @@ public sealed class MainForm : Form
 
     private void SetStatus(string text, bool? success)
     {
-        _status.Text = text;
-        _status.ForeColor = success switch
-        {
-            true => Color.FromArgb(34, 94, 58),
-            false => Color.FromArgb(164, 43, 43),
-            _ => Color.FromArgb(57, 67, 80)
-        };
-        _status.BackColor = success switch
-        {
-            true => Color.FromArgb(234, 247, 238),
-            false => Color.FromArgb(253, 238, 238),
-            _ => Color.White
-        };
+        _status.Message = text;
+        _status.Success = success;
     }
 }
