@@ -25,7 +25,7 @@ function Get-SignTool {
         return $command.Source
     }
 
-    $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
+    $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
     $kitsRoot = Join-Path $programFilesX86 "Windows Kits\10\bin"
     if (Test-Path $kitsRoot) {
         $candidate = Get-ChildItem -Path $kitsRoot -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
