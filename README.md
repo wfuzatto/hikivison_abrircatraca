@@ -181,3 +181,116 @@ dist\HikvisionAbrirCatraca.exe
 A integração foi feita usando a interface ISAPI padrão de controle de acesso da Hikvision. O suporte ao endpoint de abertura depende do modelo e firmware da catraca/controladora.
 
 O botão **Testar conexão** identifica o equipamento sem abrir a porta. O botão **Testar abertura** deve ser usado durante a implantação para confirmar o Door Nº correto em cada modelo.
+
+
+## Assinatura digital do Windows
+
+O build está preparado para assinar o EXE com **Authenticode** depois do \`dotnet publish\`.
+
+Fluxo:
+
+\`\`\`text
+restore
+→ publish win-x64 self-contained single-file
+→ assinatura Authenticode SHA-256
+→ timestamp RFC 3161
+→ signtool verify /pa
+→ artifact final
+\`\`\`
+
+Se nenhum certificado estiver configurado, o build continua normalmente e informa que o EXE ficou sem assinatura. Se uma configuração de assinatura existir e a assinatura ou a validação falhar, o build é interrompido.
+
+O script responsável é:
+
+\`\`\`text
+scripts\sign.ps1
+\`\`\`
+
+### Assinar localmente usando certificado instalado no Windows
+
+Configure o thumbprint antes de executar o build:
+
+\`\`\`powershell
+$env:CODE_SIGN_CERT_THUMBPRINT="THUMBPRINT_DO_CERTIFICADO"
+$env:CODE_SIGN_CERT_STORE="CurrentUser"
+$env:CODE_SIGN_TIMESTAMP_URL="http://timestamp.digicert.com"
+
+.\build.ps1
+\`\`\`
+
+Para certificado instalado em \`LocalMachine\My\`:
+
+\`\`\`powershell
+$env:CODE_SIGN_CERT_STORE="LocalMachine"
+\`\`\`
+
+### Assinar localmente usando PFX
+
+O arquivo PFX não deve ser adicionado ao Git.
+
+\`\`\`powershell
+$env:CODE_SIGN_PFX_PATH="C:\Certificados\codesign.pfx"
+$env:CODE_SIGN_PFX_PASSWORD="SENHA_DO_PFX"
+$env:CODE_SIGN_TIMESTAMP_URL="http://timestamp.digicert.com"
+
+.\build.ps1
+\`\`\`
+
+Arquivos \`.pfx\`, \`.p12\`, \`.pem\` e \`.key\` estão bloqueados pelo \`.gitignore\`.
+
+### GitHub Actions
+
+Para assinar automaticamente no GitHub Actions usando PFX, configure em:
+
+**Settings > Secrets and variables > Actions**
+
+Secrets:
+
+\`\`\`text
+CODE_SIGN_PFX_BASE64
+CODE_SIGN_PFX_PASSWORD
+\`\`\`
+
+\`CODE_SIGN_PFX_BASE64\` deve conter o PFX convertido para Base64. Exemplo no PowerShell:
+
+\`\`\`powershell
+[Convert]::ToBase64String(
+    [IO.File]::ReadAllBytes("C:\Certificados\codesign.pfx")
+) | Set-Clipboard
+\`\`\`
+
+Cole o conteúdo resultante no secret \`CODE_SIGN_PFX_BASE64\`.
+
+Variáveis opcionais do repositório:
+
+\`\`\`text
+CODE_SIGN_TIMESTAMP_URL = http://timestamp.digicert.com
+CODE_SIGN_CERT_STORE    = CurrentUser
+CODE_SIGN_REQUIRED      = true
+\`\`\`
+
+Não defina \`CODE_SIGN_REQUIRED=true\` enquanto o certificado ainda não estiver configurado. Sem essa variável, o workflow continua produzindo um artifact não assinado.
+
+Depois que o certificado estiver configurado, recomenda-se definir:
+
+\`\`\`text
+CODE_SIGN_REQUIRED=true
+\`\`\`
+
+A partir daí qualquer falha de assinatura ou validação impede a publicação do artifact.
+
+### Verificação manual
+
+Depois da compilação:
+
+\`\`\`powershell
+Get-AuthenticodeSignature .\dist\HikvisionAbrirCatraca.exe | Format-List
+\`\`\`
+
+ou com o Windows SDK:
+
+\`\`\`powershell
+signtool verify /pa /all /v .\dist\HikvisionAbrirCatraca.exe
+\`\`\`
+
+O resultado esperado depois da configuração do certificado é \`Valid\`, exibindo o produtor do certificado de Code Signing.
