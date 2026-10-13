@@ -130,6 +130,51 @@ public sealed class DirectIsapiClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Passagem livre: alwaysOpen. Retorno ao controle normal: resume.
+    /// Nao usar close nem alwaysClose aqui, pois podem manter o bloqueio.
+    /// </summary>
+    public async Task<DirectGateResult> SetFreePassageAsync(bool enable, CancellationToken ct = default)
+    {
+        var path = $"ISAPI/AccessControl/RemoteControl/door/{_gate.DoorNo}";
+        var command = enable ? "alwaysOpen" : "resume";
+        var xml =
+            "<RemoteControlDoor version=\"2.0\" xmlns=\"http://www.isapi.org/ver20/XMLSchema\">" +
+            "<cmd>" + command + "</cmd>" +
+            "</RemoteControlDoor>";
+        try
+        {
+            using var response = await SendAsync(HttpMethod.Put, path, xml, ct);
+            var raw = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+                return new DirectGateResult(
+                    _gate.Id, _gate.Name, _gate.Host, false,
+                    DescribeFailure(response.StatusCode, raw));
+
+            if (!IsIsapiSuccess(raw))
+                return new DirectGateResult(
+                    _gate.Id, _gate.Name, _gate.Host, false,
+                    "O equipamento nao confirmou o comando " + command + ".");
+
+            return new DirectGateResult(
+                _gate.Id, _gate.Name, _gate.Host, true,
+                enable
+                    ? "Passagem livre aceita pelo ISAPI (alwaysOpen)."
+                    : "Controle de acesso normal restaurado pelo ISAPI (resume).");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new DirectGateResult(
+                _gate.Id, _gate.Name, _gate.Host, false,
+                "Falha ao enviar " + command + ": " + ex.Message);
+        }
+    }
+
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method,
         string relativePath,
