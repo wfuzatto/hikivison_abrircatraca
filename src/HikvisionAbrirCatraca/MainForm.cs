@@ -402,7 +402,7 @@ public sealed class MainForm : Form
         var card = new CardPanel
         {
             Width = 456,
-            Height = 205,
+            Height = 278,
             Margin = new Padding(0, 0, 16, 16),
             CornerRadius = 17
         };
@@ -420,7 +420,7 @@ public sealed class MainForm : Form
             AutoSize = false,
             Width = 330,
             Height = 30,
-            Location = new Point(106, 24),
+            Location = new Point(106, 21),
             Font = AppTheme.SemiBold(12F),
             ForeColor = AppTheme.Navy,
             BackColor = Color.Transparent,
@@ -433,9 +433,22 @@ public sealed class MainForm : Form
             AutoSize = false,
             Width = 330,
             Height = 26,
-            Location = new Point(106, 55),
+            Location = new Point(106, 51),
             Font = AppTheme.Font(9.7F),
             ForeColor = AppTheme.Muted,
+            BackColor = Color.Transparent,
+            TextAlign = ContentAlignment.MiddleLeft
+        });
+
+        card.Controls.Add(new Label
+        {
+            Text = gate.FreePassage ? "PASSAGEM LIVRE (ultimo comando)" : "Controle normal (ultimo comando)",
+            AutoSize = false,
+            Width = 330,
+            Height = 24,
+            Location = new Point(106, 79),
+            Font = AppTheme.SemiBold(9.3F),
+            ForeColor = gate.FreePassage ? AppTheme.Red : AppTheme.Green,
             BackColor = Color.Transparent,
             TextAlign = ContentAlignment.MiddleLeft
         });
@@ -446,7 +459,7 @@ public sealed class MainForm : Form
             Glyph = ButtonGlyph.Unlock,
             GlyphLeft = 110,
             Width = 414,
-            Height = 64,
+            Height = 56,
             Location = new Point(20, 116),
             CornerRadius = 9,
             FillColor = AppTheme.Red,
@@ -456,9 +469,108 @@ public sealed class MainForm : Form
         };
         open.Click += GateButton_Click;
 
+        var freePassage = new RoundedButton
+        {
+            Text = gate.FreePassage ? "FECHAR" : "LIBERAR",
+            Glyph = gate.FreePassage ? ButtonGlyph.Lock : ButtonGlyph.Unlock,
+            GlyphLeft = 124,
+            Width = 414,
+            Height = 56,
+            Location = new Point(20, 190),
+            CornerRadius = 9,
+            FillColor = gate.FreePassage ? AppTheme.Red : AppTheme.Blue,
+            HoverColor = gate.FreePassage ? AppTheme.RedHover : AppTheme.BlueHover,
+            Font = AppTheme.SemiBold(11.3F),
+            Tag = gate
+        };
+        freePassage.Click += FreePassageButton_Click;
+
         card.Controls.Add(open);
+        card.Controls.Add(freePassage);
         _actionButtons.Add(open);
+        _actionButtons.Add(freePassage);
         return card;
+    }
+
+    private async void FreePassageButton_Click(object? sender, EventArgs e)
+    {
+        if (sender is not Button button || button.Tag is not ManagedGate gate)
+            return;
+
+        var enable = !gate.FreePassage;
+        var verb = enable ? "LIBERAR (passagem livre permanente)" : "FECHAR (voltar ao controle normal)";
+        if (MessageBox.Show(
+                this,
+                $"{verb} a catraca {gate.Name} ({gate.Host})?\n\n" +
+                (enable
+                    ? "A passagem ficara livre ate o comando FECHAR, inclusive se o aplicativo for encerrado."
+                    : "O comando resume devolve o acesso por credencial, sem bloquear permanentemente."),
+                "Confirmar controle de passagem",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+
+        SetBusy(true);
+        _operationCts?.Dispose();
+        _operationCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var refresh = false;
+        var message = "";
+        var succeeded = false;
+
+        try
+        {
+            SetStatus($"{verb} - enviando comando a {gate.Name}...", null);
+            using var client = new DirectIsapiClient(gate);
+            var result = await client.SetFreePassageAsync(enable, _operationCts.Token);
+
+            SettingsService.Log(
+                $"DIRECT FREE PASSAGE {(result.Success ? "OK" : "FAIL")} " +
+                $"mode={(enable ? "alwaysOpen" : "resume")} group={gate.GroupName} " +
+                $"gate={gate.Name} host={gate.Host} detail={result.Description}");
+
+            succeeded = result.Success;
+            if (result.Success)
+            {
+                gate.FreePassage = enable;
+                refresh = true;
+                message = enable
+                    ? $"PASSAGEM LIVRE ATIVADA: {gate.Name}. Clique FECHAR ao terminar."
+                    : $"CONTROLE NORMAL RESTAURADO: {gate.Name}.";
+                try
+                {
+                    SettingsService.Save(_settings);
+                }
+                catch (Exception ex)
+                {
+                    message += " ATENÇÃO: estado não pôde ser gravado, o modo real pode continuar após reiniciar o aplicativo: " + ex.Message;
+                    SettingsService.Log($"FREE PASSAGE SAVE ERROR gate={gate.Name} error={ex.Message}");
+                }
+                System.Media.SystemSounds.Asterisk.Play();
+            }
+            else
+            {
+                message = $"{gate.Name} ({gate.Host}): {result.Description}. Estado anterior preservado.";
+                System.Media.SystemSounds.Exclamation.Play();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            message = $"Tempo esgotado em {gate.Name}. Verifique fisicamente antes de repetir o comando.";
+            SettingsService.Log($"DIRECT FREE PASSAGE TIMEOUT gate={gate.Name} host={gate.Host} enable={enable}");
+        }
+        catch (Exception ex)
+        {
+            message = $"Falha em {gate.Name}: {ex.Message}. Confira fisicamente o estado.";
+            SettingsService.Log($"DIRECT FREE PASSAGE ERROR gate={gate.Name} host={gate.Host} error={ex.Message}");
+        }
+        finally
+        {
+            SetBusy(false);
+            if (refresh && _selectedGroup is { } currentGroup)
+                BuildGateCards(currentGroup);
+            SetStatus(message, succeeded);
+        }
     }
 
     private async Task OpenAllGroupAsync(GateGroup group)
