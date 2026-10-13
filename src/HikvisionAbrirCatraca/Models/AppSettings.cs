@@ -60,6 +60,8 @@ public sealed class ManagedGate
     public int DoorNo { get; set; } = 1;
     public string GroupName { get; set; } = "";
     public bool Enabled { get; set; } = true;
+    // Ultimo modo confirmado pela ISAPI. Persiste entre execucoes; pode ser modificado fora do app.
+    public bool FreePassage { get; set; }
 
     public string Endpoint =>
         $"{(UseHttps ? "https" : "http")}://{Host}:{Port}";
@@ -76,7 +78,8 @@ public sealed class ManagedGate
         Password = Password,
         DoorNo = DoorNo,
         GroupName = GroupName,
-        Enabled = Enabled
+        Enabled = Enabled,
+        FreePassage = FreePassage
     };
 }
 
@@ -101,4 +104,5 @@ internal sealed class StoredManagedGate
     public int DoorNo { get; set; } = 1;
     public string GroupName { get; set; } = "";
     public bool Enabled { get; set; } = true;
+    public bool FreePassage { get; set; }
 }
