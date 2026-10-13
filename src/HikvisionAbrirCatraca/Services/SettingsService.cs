@@ -83,7 +83,8 @@ public static class SettingsService
         ProtectedPassword = Protect(gate.Password),
         DoorNo = gate.DoorNo,
         GroupName = gate.GroupName,
-        Enabled = gate.Enabled
+        Enabled = gate.Enabled,
+        FreePassage = gate.FreePassage
     };
 
     private static ManagedGate ToRuntimeGate(StoredManagedGate gate) => new()
@@ -98,7 +99,8 @@ public static class SettingsService
         Password = Unprotect(gate.ProtectedPassword),
         DoorNo = gate.DoorNo > 0 ? gate.DoorNo : 1,
         GroupName = gate.GroupName,
-        Enabled = gate.Enabled
+        Enabled = gate.Enabled,
+        FreePassage = gate.FreePassage
     };
 
     private static string Protect(string value)
