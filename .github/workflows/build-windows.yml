@@ -5,8 +5,10 @@ on:
   push:
     branches:
       - main
+      - fix/fechar-close-isapi-20261023
     paths:
       - "src/**"
+      - "tests/**"
       - "scripts/**"
       - "build.ps1"
       - ".github/workflows/build-windows.yml"
@@ -23,6 +25,10 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+
+      - name: Teste ISAPI simulado - sem conexao a catracas
+        shell: powershell
+        run: dotnet run --project .\\tests\\HikvisionAbrirCatraca.IsapiTests\\HikvisionAbrirCatraca.IsapiTests.csproj --configuration Release
 
       - name: Build, publish and optionally sign
         shell: powershell
