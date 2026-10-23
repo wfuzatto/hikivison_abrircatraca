@@ -92,7 +92,7 @@ Dentro do bloco existem duas formas de operação:
 
 - **ABRIR ESTA CATRACA** — envia um pulso normal de abertura apenas para a catraca escolhida;
 - **LIBERAR** — ativa passagem livre permanente com ISAPI `alwaysOpen`, somente para a catraca escolhida. Depois de confirmado, o mesmo botao vira **FECHAR**;
-- **FECHAR** — envia o comando ISAPI `resume`, encerrando passagem livre e restaurando o controle normal por credenciais. Nao utiliza `alwaysClose`;
+- **FECHAR** — envia o comando ISAPI `close`, encerrando passagem livre e restaurando o controle normal por credenciais. Nao utiliza bloqueio permanente;
 - **ABRIR TODAS** — envia o comando para todas as catracas ativas daquele bloco.
 
 O botão **ABRIR TODAS** fica no topo da seção e exige confirmação antes de executar, para reduzir risco de acionamento acidental.
@@ -142,10 +142,10 @@ Equipamentos com mais de uma porta/relé podem utilizar \`2\`, \`3\` etc. O valo
 
 ## Segurança operacional
 
-- o aplicativo usa `open` para abertura momentanea, `alwaysOpen` para passagem livre e `resume` para voltar ao controle normal;
+- o aplicativo usa `open` para abertura momentanea, `alwaysOpen` para passagem livre e `close` para voltar ao controle normal;
 - passagem livre permanece ate o comando **FECHAR** e nao e encerrada ao fechar o aplicativo;
 - o estado do botao e salvo localmente apos confirmacao do equipamento e recuperado na proxima execucao; mudancas feitas fora do aplicativo podem desatualiza-lo;
-- `resume` depende da compatibilidade do firmware; teste primeiro com uma catraca, confirmando que credenciais voltam a ser exigidas;
+- `close` foi validado em campo nos dispositivos DS-K6B411TX-M V3.0.0, segundo relato do operador; valide outros firmwares antes de uso;
 - **nao usa** `alwaysClose` para encerrar passagem livre, pois isso pode bloquear visitantes autorizados;
 - a abertura individual abre somente uma catraca;
 - a abertura em lote só ocorre pelo botão **ABRIR TODAS** dentro do bloco e exige confirmação;
@@ -306,8 +306,8 @@ Na tela operacional do Windows Forms, dentro de cada bloco, cada catraca tem doi
 
 1. **ABRIR ESTA CATRACA** mantem o acionamento momentaneo ja existente.
 2. **LIBERAR** envia `PUT /ISAPI/AccessControl/RemoteControl/door/{doorNo}` com `<cmd>alwaysOpen</cmd>`, depois de confirmacao. Se o equipamento aceitar o comando, o botao passa a **FECHAR**.
-3. **FECHAR** envia `<cmd>resume</cmd>`, retornando ao modo normal de validacao de entrada. Ele nao trava permanentemente a catraca.
+3. **FECHAR** envia `<cmd>close</cmd>`, retornando ao modo normal de validacao de entrada. Ele nao trava permanentemente a catraca.
 
 O estado fica salvo no mesmo `settings.json` em `%LOCALAPPDATA%\ValeMantiqueira\HikvisionAbrirCatraca`, sem apagar cadastros, senhas protegidas por DPAPI ou grupos. O log registra modo e resposta do equipamento. Caso haja timeout ou recusa do ISAPI, o botao nao muda automaticamente. **A indicacao persistida se refere ao ultimo comando aceito por este aplicativo**, nao a uma confirmacao de posicao fisica; mudancas feitas pelo proprio equipamento ou por outro software podem alterar o estado. Confira fisicamente no primeiro teste.
 
-Alguns modelos/firmwares nao suportam `alwaysOpen` e/ou `resume`; nesses casos o programa informa a falha, mantendo a abertura normal disponivel. Nao execute o teste sem um operador local e uma forma de retorno manual em caso de falha de rede.
+Alguns modelos/firmwares nao suportam `alwaysOpen` e/ou `close`; nesses casos o programa informa a falha, mantendo a abertura normal disponivel. Nao execute o teste sem um operador local e uma forma de retorno manual em caso de falha de rede.
