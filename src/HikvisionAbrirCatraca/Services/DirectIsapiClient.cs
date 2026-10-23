@@ -46,6 +46,13 @@ public sealed class DirectIsapiClient : IDisposable
         };
     }
 
+    // Permite teste isolado do transporte HTTP sem conexão com uma catraca física.
+    internal DirectIsapiClient(ManagedGate gate, HttpClient http)
+    {
+        _gate = gate;
+        _http = http;
+    }
+
     public async Task<DeviceInfo> GetDeviceInfoAsync(CancellationToken ct = default)
     {
         using var response = await SendAsync(HttpMethod.Get, "ISAPI/System/deviceInfo", null, ct);
@@ -131,13 +138,13 @@ public sealed class DirectIsapiClient : IDisposable
     }
 
     /// <summary>
-    /// Passagem livre: alwaysOpen. Retorno ao controle normal: resume.
-    /// Nao usar close nem alwaysClose aqui, pois podem manter o bloqueio.
+    /// Passagem livre: alwaysOpen. Retorno ao controle normal: close.
+    /// Validado em campo para DS-K6B411TX-M V3.0.0, conforme relato do operador.
     /// </summary>
     public async Task<DirectGateResult> SetFreePassageAsync(bool enable, CancellationToken ct = default)
     {
         var path = $"ISAPI/AccessControl/RemoteControl/door/{_gate.DoorNo}";
-        var command = enable ? "alwaysOpen" : "resume";
+        var command = enable ? "alwaysOpen" : "close";
         var xml =
             "<RemoteControlDoor version=\"2.0\" xmlns=\"http://www.isapi.org/ver20/XMLSchema\">" +
             "<cmd>" + command + "</cmd>" +
@@ -152,16 +159,16 @@ public sealed class DirectIsapiClient : IDisposable
                     _gate.Id, _gate.Name, _gate.Host, false,
                     DescribeFailure(response.StatusCode, raw));
 
-            if (!IsIsapiSuccess(raw))
+            if (!IsConfirmedDoorCommand(raw))
                 return new DirectGateResult(
                     _gate.Id, _gate.Name, _gate.Host, false,
-                    "O equipamento nao confirmou o comando " + command + ".");
+                    "Comando " + command + " nao confirmado: " + DescribeFailure(response.StatusCode, raw));
 
             return new DirectGateResult(
                 _gate.Id, _gate.Name, _gate.Host, true,
                 enable
                     ? "Passagem livre aceita pelo ISAPI (alwaysOpen)."
-                    : "Controle de acesso normal restaurado pelo ISAPI (resume).");
+                    : "Controle de acesso normal restaurado pelo ISAPI (close).");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -228,29 +235,71 @@ public sealed class DirectIsapiClient : IDisposable
         }
     }
 
-    private static string DescribeFailure(HttpStatusCode code, string raw)
+    // Somente status ISAPI explícito pode alterar o modo persistido da catraca.
+    // Não basta HTTP 200 e não basta body vazio.
+    private static bool IsConfirmedDoorCommand(string raw)
     {
-        var detail = "";
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+
         try
         {
             var doc = XDocument.Parse(raw);
-            detail =
-                doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "errorMsg")?.Value?.Trim() ??
-                doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "subStatusCode")?.Value?.Trim() ??
-                doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "statusString")?.Value?.Trim() ??
-                "";
+            if (doc.Root?.Name.LocalName != "ResponseStatus") return false;
+
+            string? Field(string name) => doc.Root.Elements()
+                .FirstOrDefault(x => x.Name.LocalName == name)?.Value?.Trim();
+
+            return Field("statusCode") == "1" &&
+                (string.IsNullOrWhiteSpace(Field("statusString")) ||
+                    string.Equals(Field("statusString"), "OK", StringComparison.OrdinalIgnoreCase)) &&
+                (string.IsNullOrWhiteSpace(Field("subStatusCode")) ||
+                    string.Equals(Field("subStatusCode"), "ok", StringComparison.OrdinalIgnoreCase)) &&
+                string.IsNullOrWhiteSpace(Field("errorMsg"));
         }
         catch
         {
-            detail = raw.Trim();
+            return false;
+        }
+    }
+
+    private static string DescribeFailure(HttpStatusCode code, string raw)
+    {
+        var parts = new List<string>();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            parts.Add("resposta vazia, sem confirmacao ISAPI");
+        }
+        else
+        {
+            try
+            {
+                var xml = XDocument.Parse(raw);
+                foreach (var field in new[] { "statusCode", "statusString", "subStatusCode", "errorMsg" })
+                {
+                    var value = xml.Descendants()
+                        .FirstOrDefault(x => x.Name.LocalName == field)?.Value?.Trim();
+                    if (!string.IsNullOrWhiteSpace(value))
+                        parts.Add(field + "=" + SafeLogValue(value));
+                }
+                if (parts.Count == 0)
+                    parts.Add("XML sem campos de status ISAPI");
+            }
+            catch
+            {
+                parts.Add("resposta nao e XML de status ISAPI");
+            }
         }
 
-        if (detail.Length > 220) detail = detail[..220];
+        var prefix = code == HttpStatusCode.Unauthorized ? "Usuario ou senha rejeitados. " : "";
+        return prefix + $"HTTP {(int)code}: " + string.Join("; ", parts);
+    }
 
-        if (code == HttpStatusCode.Unauthorized)
-            return "Usuário ou senha rejeitados pela catraca (HTTP 401).";
-
-        return $"HTTP {(int)code}" + (string.IsNullOrWhiteSpace(detail) ? "" : ": " + detail);
+    // Registra somente os campos de status retornados; nunca registra request,
+    // senha ou cabecalhos de autenticacao.
+    private static string SafeLogValue(string value)
+    {
+        var clean = new string(value.Select(ch => char.IsControl(ch) ? ' ' : ch).ToArray()).Trim();
+        return clean.Length <= 1024 ? clean : clean[..1024] + "…";
     }
 
     public void Dispose() => _http.Dispose();
