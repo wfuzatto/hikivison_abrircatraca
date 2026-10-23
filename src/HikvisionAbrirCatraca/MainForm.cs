@@ -504,7 +504,7 @@ public sealed class MainForm : Form
                 $"{verb} a catraca {gate.Name} ({gate.Host})?\n\n" +
                 (enable
                     ? "A passagem ficara livre ate o comando FECHAR, inclusive se o aplicativo for encerrado."
-                    : "O comando resume devolve o acesso por credencial, sem bloquear permanentemente."),
+                    : "O comando close restaura o controle normal por credencial, sem bloqueio permanente."),
                 "Confirmar controle de passagem",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning,
@@ -526,7 +526,7 @@ public sealed class MainForm : Form
 
             SettingsService.Log(
                 $"DIRECT FREE PASSAGE {(result.Success ? "OK" : "FAIL")} " +
-                $"mode={(enable ? "alwaysOpen" : "resume")} group={gate.GroupName} " +
+                $"mode={(enable ? "alwaysOpen" : "close")} group={gate.GroupName} " +
                 $"gate={gate.Name} host={gate.Host} detail={result.Description}");
 
             succeeded = result.Success;
